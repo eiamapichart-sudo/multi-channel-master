@@ -6,7 +6,7 @@ import { PrdSidebar } from "@/components/prd/PrdSidebar";
 const description =
   "PRD ระบบโพสต์ครั้งเดียวไปทุกช่องทางโซเชียล: Facebook, Instagram, TikTok, YouTube, LINE OA พร้อมตั้งเวลาล่วงหน้า ระบบอนุมัติ หลายแบรนด์ และแนวทางเชื่อมต่อ ERP";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/prd")({
   head: () => ({
     meta: [
       { title: "PRD: Social Publisher — โพสต์ครั้งเดียวไปทุกช่องทาง" },
