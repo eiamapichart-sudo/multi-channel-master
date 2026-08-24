@@ -145,5 +145,29 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
   }
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-full {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  body {
+    background: white;
+  }
+}
+
