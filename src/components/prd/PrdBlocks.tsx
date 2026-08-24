@@ -4,7 +4,7 @@ function Paragraph({ text }: { text: string }) {
   return <p className="text-[15px] leading-8 text-foreground/85">{text}</p>;
 }
 
-function List({ items, ordered }: { items: string[]; ordered?: boolean }) {
+function List({ items, ordered }: { items: string[]; ordered?: boolean | undefined }) {
   if (ordered) {
     return (
       <ol className="space-y-2.5">
@@ -72,7 +72,7 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
   );
 }
 
-function Note({ title, text }: { title?: string; text: string }) {
+function Note({ title, text }: { title?: string | undefined; text: string }) {
   return (
     <aside className="rounded-lg border-l-4 border-accent bg-accent/8 px-5 py-4">
       {title ? (
