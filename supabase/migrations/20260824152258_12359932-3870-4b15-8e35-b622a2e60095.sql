@@ -1,0 +1,14 @@
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.brands TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.brand_members TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.channel_accounts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.posts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.post_targets TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.profiles TO authenticated;
+GRANT SELECT ON public.user_roles TO authenticated;
+GRANT ALL ON public.brands TO service_role;
+GRANT ALL ON public.brand_members TO service_role;
+GRANT ALL ON public.channel_accounts TO service_role;
+GRANT ALL ON public.posts TO service_role;
+GRANT ALL ON public.post_targets TO service_role;
+GRANT ALL ON public.profiles TO service_role;
+GRANT ALL ON public.user_roles TO service_role;

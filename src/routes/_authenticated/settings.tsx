@@ -70,7 +70,7 @@ function SettingsPage() {
       setBrandId(id);
       toast.success("เพิ่มแบรนด์แล้ว");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "เพิ่มไม่สำเร็จ"),
+    onError: (error) => toast.error((error as { message?: string })?.message ?? "เพิ่มไม่สำเร็จ"),
   });
 
   const addChannel = useMutation({
@@ -87,7 +87,7 @@ function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["channels", brandId] });
       toast.success("เพิ่มช่องทางแล้ว");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "เพิ่มไม่สำเร็จ"),
+    onError: (error) => toast.error((error as { message?: string })?.message ?? "เพิ่มไม่สำเร็จ"),
   });
 
   const removeChannel = useMutation({
