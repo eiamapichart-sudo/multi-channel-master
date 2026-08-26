@@ -19,8 +19,8 @@
  */
 
 @theme inline {
-  --font-sans: "Sarabun", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "IBM Plex Sans Thai", "Sarabun", ui-sans-serif, sans-serif;
+  --font-sans: "Anuphan", "Sarabun", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Anuphan", "IBM Plex Sans Thai", ui-sans-serif, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -102,26 +102,34 @@
   --sidebar-ring: oklch(0.704 0.04 256.788);
 }
 
+/* โหมดแอป Social Post — ทันสมัย วัยรุ่น เทคโนโลยี (นีออนม่วง-ฟ้า บนพื้นเข้ม) */
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
+  --background: oklch(0.16 0.024 280);
+  --foreground: oklch(0.97 0.008 280);
+  --card: oklch(0.215 0.028 280);
+  --card-foreground: oklch(0.97 0.008 280);
+  --popover: oklch(0.215 0.028 280);
+  --popover-foreground: oklch(0.97 0.008 280);
+  --primary: oklch(0.64 0.215 295);
+  --primary-foreground: oklch(0.99 0.005 280);
+  --secondary: oklch(0.27 0.03 280);
+  --secondary-foreground: oklch(0.95 0.01 280);
+  --muted: oklch(0.27 0.03 280);
+  --muted-foreground: oklch(0.7 0.03 280);
+  --accent: oklch(0.8 0.14 195);
+  --accent-foreground: oklch(0.18 0.03 250);
+  --destructive: oklch(0.66 0.21 18);
+  --destructive-foreground: oklch(0.99 0.005 280);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.64 0.215 295);
+  --gradient-brand: linear-gradient(135deg, oklch(0.64 0.215 295), oklch(0.72 0.16 205));
+  --gradient-glow: radial-gradient(
+    120% 100% at 50% 0%,
+    color-mix(in oklab, oklch(0.64 0.215 295) 22%, transparent),
+    transparent 70%
+  );
+  --shadow-glow: 0 8px 24px -8px color-mix(in oklab, oklch(0.64 0.215 295) 70%, transparent);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);

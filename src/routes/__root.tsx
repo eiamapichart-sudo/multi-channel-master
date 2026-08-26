@@ -82,17 +82,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "viewport",
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { title: "Social Publisher — โพสต์ครั้งเดียวไปทุกช่องทาง" },
+      { title: "Social Post — โพสต์ครั้งเดียวไปทุกช่องทาง" },
       {
         name: "description",
         content:
           "โพสต์ครั้งเดียวไป Facebook, Instagram, TikTok, YouTube และ LINE OA ตั้งเวลาล่วงหน้าและอนุมัติก่อนเผยแพร่",
       },
-      { name: "theme-color", content: "#0f766e" },
+      { name: "theme-color", content: "#1b1626" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-title", content: "Social Publisher" },
-      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
-      { property: "og:title", content: "Social Publisher" },
+      { name: "apple-mobile-web-app-title", content: "Social Post" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { property: "og:title", content: "Social Post" },
       {
         property: "og:description",
         content: "โพสต์ครั้งเดียวไปทุกช่องทางโซเชียล ตั้งเวลาล่วงหน้า พร้อมขั้นตอนอนุมัติ",
@@ -110,7 +110,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&family=Sarabun:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@400;600;700&family=Sarabun:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap",
       },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
       { rel: "manifest", href: "/manifest.webmanifest" },

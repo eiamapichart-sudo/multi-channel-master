@@ -11,12 +11,12 @@ import { Label } from "@/components/ui/label";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "เข้าสู่ระบบ — Social Publisher" },
+      { title: "เข้าสู่ระบบ — Social Post" },
       {
         name: "description",
         content: "เข้าสู่ระบบเพื่อจัดการโพสต์หลายช่องทาง ตั้งเวลาล่วงหน้า และอนุมัติคอนเทนต์",
       },
-      { property: "og:title", content: "เข้าสู่ระบบ — Social Publisher" },
+      { property: "og:title", content: "เข้าสู่ระบบ — Social Post" },
       {
         property: "og:description",
         content: "จัดการโพสต์โซเชียลหลายช่องทางในที่เดียว พร้อมขั้นตอนอนุมัติ",

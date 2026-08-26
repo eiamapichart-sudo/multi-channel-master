@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Layers, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
@@ -14,16 +14,13 @@ import { PLATFORMS, platformLabel, type Platform } from "@/lib/platforms";
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
-      { title: "ตั้งค่าแบรนด์และช่องทาง — Social Publisher" },
+      { title: "ตั้งค่าแบรนด์และเพจ — Social Post" },
       {
         name: "description",
-        content: "เพิ่มแบรนด์หรือลูกค้า ผูกช่องทางโซเชียลของแต่ละแบรนด์ และจัดการบัญชีผู้ใช้ของคุณ",
+        content: "เพิ่มแบรนด์หรือลูกค้า ผูกได้หลายเพจต่อช่องทาง และจัดการบัญชีผู้ใช้ของคุณ",
       },
-      { property: "og:title", content: "ตั้งค่าแบรนด์และช่องทาง — Social Publisher" },
-      {
-        property: "og:description",
-        content: "จัดการแบรนด์ ช่องทางโซเชียล และบัญชีผู้ใช้",
-      },
+      { property: "og:title", content: "ตั้งค่าแบรนด์และเพจ — Social Post" },
+      { property: "og:description", content: "จัดการแบรนด์ เพจโซเชียลหลายเพจ และบัญชีผู้ใช้" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -32,21 +29,23 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 function SettingsPage() {
-  const { brands, brandId, brand, setBrandId, refresh } = useBrand();
+  const { brands, brandId, brand, isAll, setBrandId, refresh } = useBrand();
   const { user, signOut } = useAuth();
   const queryClient = useQueryClient();
   const [brandName, setBrandName] = useState("");
   const [accountName, setAccountName] = useState("");
   const [platform, setPlatform] = useState<Platform>("facebook");
 
+  const targetBrand = brandId ?? brands[0]?.id ?? null;
+
   const { data: channels = [] } = useQuery({
-    queryKey: ["channels", brandId],
-    enabled: !!brandId,
+    queryKey: ["channels", targetBrand],
+    enabled: !!targetBrand,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("channel_accounts")
         .select("id, platform, account_name, connected")
-        .eq("brand_id", brandId!)
+        .eq("brand_id", targetBrand!)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data;
@@ -75,17 +74,17 @@ function SettingsPage() {
 
   const addChannel = useMutation({
     mutationFn: async () => {
-      if (!brandId) throw new Error("เลือกแบรนด์ก่อน");
+      if (!targetBrand) throw new Error("เลือกแบรนด์ก่อน");
       if (!accountName.trim()) throw new Error("กรุณาใส่ชื่อบัญชี/เพจ");
       const { error } = await supabase
         .from("channel_accounts")
-        .insert({ brand_id: brandId, platform, account_name: accountName.trim() });
+        .insert({ brand_id: targetBrand, platform, account_name: accountName.trim() });
       if (error) throw error;
     },
     onSuccess: () => {
       setAccountName("");
-      queryClient.invalidateQueries({ queryKey: ["channels", brandId] });
-      toast.success("เพิ่มช่องทางแล้ว");
+      queryClient.invalidateQueries({ queryKey: ["channels", targetBrand] });
+      toast.success("เพิ่มเพจแล้ว");
     },
     onError: (error) => toast.error((error as { message?: string })?.message ?? "เพิ่มไม่สำเร็จ"),
   });
@@ -95,15 +94,32 @@ function SettingsPage() {
       const { error } = await supabase.from("channel_accounts").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels", brandId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels", targetBrand] }),
   });
 
   return (
     <div className="space-y-8 pb-6">
-      <h1 className="font-display text-xl font-semibold text-foreground">ตั้งค่า</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">ตั้งค่า</h1>
 
       <section className="space-y-3">
-        <h2 className="font-display text-sm font-semibold text-foreground">แบรนด์ / ลูกค้า</h2>
+        <h2 className="font-display text-sm font-semibold text-foreground">มุมมอง / แบรนด์</h2>
+
+        <button
+          type="button"
+          onClick={() => setBrandId(null)}
+          className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm transition-colors ${
+            isAll ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card"
+          }`}
+        >
+          <Layers className="size-4 text-primary" />
+          <span className="min-w-0">
+            <span className="block font-semibold">ภาพรวมทุกแบรนด์</span>
+            <span className="block text-xs text-muted-foreground">
+              โหมดผู้ดูแล — เห็นโพสต์ ปฏิทิน และคิวอนุมัติของทุกแบรนด์รวมกัน
+            </span>
+          </span>
+        </button>
+
         {brands.length ? (
           <ul className="space-y-2">
             {brands.map((b) => (
@@ -111,12 +127,14 @@ function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setBrandId(b.id)}
-                  className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm ${
-                    b.id === brandId ? "border-primary bg-primary/5 text-primary" : "border-border bg-card"
+                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition-colors ${
+                    b.id === brandId
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border bg-card"
                   }`}
                 >
-                  <span className="font-medium">{b.name}</span>
-                  <span className="text-xs text-muted-foreground">{b.timezone}</span>
+                  <span className="font-semibold">{b.name}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">{b.timezone}</span>
                 </button>
               </li>
             ))}
@@ -130,8 +148,13 @@ function SettingsPage() {
             value={brandName}
             onChange={(e) => setBrandName(e.target.value)}
             placeholder="ชื่อแบรนด์ใหม่"
+            className="rounded-xl"
           />
-          <Button onClick={() => addBrand.mutate()} disabled={addBrand.isPending}>
+          <Button
+            className="rounded-xl"
+            onClick={() => addBrand.mutate()}
+            disabled={addBrand.isPending}
+          >
             เพิ่ม
           </Button>
         </div>
@@ -139,17 +162,17 @@ function SettingsPage() {
 
       <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-foreground">
-          ช่องทางของ {brand?.name ?? "—"}
+          เพจ/บัญชีของ {brand?.name ?? brands.find((b) => b.id === targetBrand)?.name ?? "—"}
         </h2>
         {channels.length ? (
           <ul className="space-y-2">
             {channels.map((c) => (
               <li
                 key={c.id}
-                className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3"
+                className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3"
               >
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium text-foreground">
+                  <span className="block text-sm font-semibold text-foreground">
                     {platformLabel(c.platform)}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">{c.account_name}</span>
@@ -158,7 +181,7 @@ function SettingsPage() {
                   type="button"
                   aria-label={`ลบ ${c.account_name}`}
                   onClick={() => removeChannel.mutate(c.id)}
-                  className="rounded-md p-2 text-muted-foreground"
+                  className="rounded-lg p-2 text-muted-foreground"
                 >
                   <Trash2 className="size-4" />
                 </button>
@@ -166,17 +189,17 @@ function SettingsPage() {
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">ยังไม่ได้ผูกช่องทาง</p>
+          <p className="text-sm text-muted-foreground">ยังไม่ได้ผูกเพจ</p>
         )}
 
-        <div className="space-y-2 rounded-xl border border-border bg-card p-4">
+        <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
           <div className="space-y-1.5">
             <Label htmlFor="platform">แพลตฟอร์ม</Label>
             <select
               id="platform"
               value={platform}
               onChange={(e) => setPlatform(e.target.value as Platform)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground"
             >
               {PLATFORMS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -186,19 +209,24 @@ function SettingsPage() {
             </select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="account">ชื่อบัญชี / เพจ</Label>
+            <Label htmlFor="account">ชื่อเพจ / บัญชี</Label>
             <Input
               id="account"
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
-              placeholder="เช่น @mybrand"
+              placeholder="เช่น เพจหลัก, เพจสาขา 2"
+              className="rounded-xl"
             />
           </div>
-          <Button className="w-full" onClick={() => addChannel.mutate()} disabled={addChannel.isPending}>
-            เพิ่มช่องทาง
+          <Button
+            className="h-11 w-full rounded-xl font-semibold"
+            onClick={() => addChannel.mutate()}
+            disabled={addChannel.isPending}
+          >
+            เพิ่มเพจ
           </Button>
           <p className="text-xs text-muted-foreground">
-            เฟสนี้เป็นการบันทึกรายการช่องทาง การเชื่อมต่อ API จริงจะเพิ่มในเฟสถัดไป
+            เพิ่มได้หลายเพจต่อหนึ่งช่องทาง เช่น Facebook หลายเพจ แล้วเลือกส่งพร้อมกันตอนสร้างโพสต์
           </p>
         </div>
       </section>
@@ -206,7 +234,7 @@ function SettingsPage() {
       <section className="space-y-3 border-t border-border pt-6">
         <h2 className="font-display text-sm font-semibold text-foreground">บัญชีผู้ใช้</h2>
         <p className="text-sm text-muted-foreground">{user?.email}</p>
-        <Button variant="outline" className="h-11 w-full" onClick={signOut}>
+        <Button variant="outline" className="h-11 w-full rounded-xl" onClick={signOut}>
           ออกจากระบบ
         </Button>
         <a

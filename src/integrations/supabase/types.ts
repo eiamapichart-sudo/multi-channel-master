@@ -116,6 +116,7 @@ export type Database = {
       }
       post_targets: {
         Row: {
+          channel_account_id: string | null
           created_at: string
           error_message: string | null
           external_url: string | null
@@ -127,6 +128,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          channel_account_id?: string | null
           created_at?: string
           error_message?: string | null
           external_url?: string | null
@@ -138,6 +140,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          channel_account_id?: string | null
           created_at?: string
           error_message?: string | null
           external_url?: string | null
@@ -149,6 +152,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "post_targets_channel_account_id_fkey"
+            columns: ["channel_account_id"]
+            isOneToOne: false
+            referencedRelation: "channel_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "post_targets_post_id_fkey"
             columns: ["post_id"]
@@ -168,6 +178,7 @@ export type Database = {
           created_by: string
           id: string
           media_url: string | null
+          media_urls: string[]
           published_at: string | null
           scheduled_at: string | null
           status: Database["public"]["Enums"]["post_status"]
@@ -183,6 +194,7 @@ export type Database = {
           created_by?: string
           id?: string
           media_url?: string | null
+          media_urls?: string[]
           published_at?: string | null
           scheduled_at?: string | null
           status?: Database["public"]["Enums"]["post_status"]
@@ -198,6 +210,7 @@ export type Database = {
           created_by?: string
           id?: string
           media_url?: string | null
+          media_urls?: string[]
           published_at?: string | null
           scheduled_at?: string | null
           status?: Database["public"]["Enums"]["post_status"]
