@@ -30,7 +30,7 @@ export async function uploadMedia(brandId: string, files: File[]) {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
     const path = `${brandId}/${crypto.randomUUID()}.${ext}`;
     const { error } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file, {
-      contentType: file.type || undefined,
+      ...(file.type ? { contentType: file.type } : {}),
       upsert: false,
     });
     if (error) throw error;

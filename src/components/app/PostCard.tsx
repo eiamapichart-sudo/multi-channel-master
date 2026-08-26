@@ -16,7 +16,7 @@ export type PostRow = {
   post_targets: { id: string; platform: string; status: string }[];
 };
 
-export function PostCard({ post, brandName }: { post: PostRow; brandName?: string }) {
+export function PostCard({ post, brandName }: { post: PostRow; brandName?: string | undefined }) {
   const status = STATUS_META[post.status];
   const paths = post.media_urls?.length ? post.media_urls : post.media_url ? [post.media_url] : [];
   const [cover, setCover] = useState<MediaItem | null>(null);
