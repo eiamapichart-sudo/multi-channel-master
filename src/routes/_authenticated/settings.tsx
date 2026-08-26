@@ -9,7 +9,7 @@ import { useBrand } from "@/hooks/useBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PLATFORMS, platformLabel, type Platform } from "@/lib/platforms";
+import { PLATFORMS, type Platform } from "@/lib/platforms";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -165,29 +165,36 @@ function SettingsPage() {
           เพจ/บัญชีของ {brand?.name ?? brands.find((b) => b.id === targetBrand)?.name ?? "—"}
         </h2>
         {channels.length ? (
-          <ul className="space-y-2">
-            {channels.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3"
-              >
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-foreground">
-                    {platformLabel(c.platform)}
-                  </span>
-                  <span className="block truncate text-xs text-muted-foreground">{c.account_name}</span>
-                </span>
-                <button
-                  type="button"
-                  aria-label={`ลบ ${c.account_name}`}
-                  onClick={() => removeChannel.mutate(c.id)}
-                  className="rounded-lg p-2 text-muted-foreground"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-3">
+            {PLATFORMS.filter((p) => channels.some((c) => c.platform === p.id)).map((p) => {
+              const group = channels.filter((c) => c.platform === p.id);
+              return (
+                <div key={p.id} className="overflow-hidden rounded-2xl border border-border bg-card">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                    <span className="text-sm font-semibold text-foreground">{p.label}</span>
+                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                      {group.length} เพจ
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {group.map((c) => (
+                      <li key={c.id} className="flex items-center justify-between px-4 py-2.5">
+                        <span className="min-w-0 truncate text-sm text-foreground">{c.account_name}</span>
+                        <button
+                          type="button"
+                          aria-label={`ลบ ${c.account_name}`}
+                          onClick={() => removeChannel.mutate(c.id)}
+                          className="rounded-lg p-2 text-muted-foreground"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">ยังไม่ได้ผูกเพจ</p>
         )}
