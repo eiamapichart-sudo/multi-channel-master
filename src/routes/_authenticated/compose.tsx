@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useBrand } from "@/hooks/useBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MediaPicker } from "@/components/app/MediaPicker";
 import {
   PLATFORMS,
   STATUS_META,
@@ -24,15 +26,16 @@ export const Route = createFileRoute("/_authenticated/compose")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "สร้างโพสต์ — Social Publisher" },
+      { title: "สร้างโพสต์ — Social Post" },
       {
         name: "description",
-        content: "เขียนโพสต์ครั้งเดียว เลือกช่องทาง Facebook Instagram TikTok YouTube LINE และตั้งเวลาล่วงหน้า",
+        content:
+          "เขียนโพสต์ครั้งเดียว แนบรูปหรือคลิปจากเครื่องเป็นอัลบัม เลือกหลายเพจหลายช่องทาง และตั้งเวลาล่วงหน้า",
       },
-      { property: "og:title", content: "สร้างโพสต์ — Social Publisher" },
+      { property: "og:title", content: "สร้างโพสต์ — Social Post" },
       {
         property: "og:description",
-        content: "เขียนครั้งเดียว เลือกช่องทาง ตั้งเวลา แล้วส่งเข้าคิวอนุมัติ",
+        content: "เขียนครั้งเดียว แนบอัลบัม เลือกหลายเพจ ตั้งเวลา แล้วส่งเข้าคิวอนุมัติ",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -41,18 +44,42 @@ export const Route = createFileRoute("/_authenticated/compose")({
   component: ComposePage,
 });
 
+type ChannelAccount = { id: string; platform: Platform; account_name: string };
+
 function ComposePage() {
   const { id } = Route.useSearch();
-  const { brandId } = useBrand();
+  const { brandId, brands, setBrandId } = useBrand();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const [draftBrand, setDraftBrand] = useState<string | null>(brandId);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaPaths, setMediaPaths] = useState<string[]>([]);
   const [scheduledAt, setScheduledAt] = useState("");
-  const [selected, setSelected] = useState<Platform[]>(["facebook"]);
+  const [accountIds, setAccountIds] = useState<string[]>([]);
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [status, setStatus] = useState<PostStatus>("draft");
+
+  useEffect(() => {
+    if (brandId) setDraftBrand(brandId);
+  }, [brandId]);
+
+  const activeBrand = draftBrand ?? brandId ?? brands[0]?.id ?? null;
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ["channels", activeBrand],
+    enabled: !!activeBrand,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("channel_accounts")
+        .select("id, platform, account_name")
+        .eq("brand_id", activeBrand!)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data as ChannelAccount[];
+    },
+  });
 
   const { data: post } = useQuery({
     queryKey: ["post", id],
@@ -60,7 +87,7 @@ function ComposePage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("posts")
-        .select("*, post_targets(id, platform, status, error_message)")
+        .select("*, post_targets(id, platform, channel_account_id, status, error_message)")
         .eq("id", id!)
         .maybeSingle();
       if (error) throw error;
@@ -72,26 +99,38 @@ function ComposePage() {
     if (!post) return;
     setTitle(post.title ?? "");
     setBody(post.body ?? "");
-    setMediaUrl(post.media_url ?? "");
+    setMediaPaths((post.media_urls as string[] | null) ?? []);
     setScheduledAt(isoToLocalInput(post.scheduled_at));
     setStatus(post.status as PostStatus);
-    const targets = (post.post_targets ?? []) as { platform: Platform }[];
-    if (targets.length) setSelected(targets.map((t) => t.platform));
+    setDraftBrand(post.brand_id);
+    const targets = (post.post_targets ?? []) as {
+      platform: Platform;
+      channel_account_id: string | null;
+    }[];
+    setAccountIds(targets.map((t) => t.channel_account_id).filter((v): v is string => !!v));
+    setPlatforms([...new Set(targets.filter((t) => !t.channel_account_id).map((t) => t.platform))]);
   }, [post]);
 
   const locked = status === "published" || status === "publishing";
 
+  const selectedPlatformSet = new Set<Platform>([
+    ...platforms,
+    ...accounts.filter((a) => accountIds.includes(a.id)).map((a) => a.platform),
+  ]);
+
   const save = useMutation({
     mutationFn: async (nextStatus: PostStatus) => {
-      if (!brandId) throw new Error("กรุณาเลือกแบรนด์ก่อน");
-      if (!body.trim()) throw new Error("กรุณาใส่เนื้อหาโพสต์");
-      if (selected.length === 0) throw new Error("เลือกช่องทางอย่างน้อย 1 ช่องทาง");
+      if (!activeBrand) throw new Error("กรุณาเลือกแบรนด์ก่อน");
+      if (!body.trim() && mediaPaths.length === 0) throw new Error("ใส่เนื้อหาหรือแนบสื่ออย่างน้อย 1 อย่าง");
+      if (accountIds.length === 0 && platforms.length === 0)
+        throw new Error("เลือกช่องทางอย่างน้อย 1 ช่องทาง");
 
       const payload = {
-        brand_id: brandId,
+        brand_id: activeBrand,
         title: title.trim() || null,
         body: body.trim(),
-        media_url: mediaUrl.trim() || null,
+        media_url: mediaPaths[0] ?? null,
+        media_urls: mediaPaths,
         scheduled_at: localInputToIso(scheduledAt),
         status: nextStatus,
       };
@@ -108,9 +147,14 @@ function ComposePage() {
         postId = data.id;
       }
 
-      const { error: targetError } = await supabase
-        .from("post_targets")
-        .insert(selected.map((platform) => ({ post_id: postId!, platform })));
+      const rows = [
+        ...accounts
+          .filter((a) => accountIds.includes(a.id))
+          .map((a) => ({ post_id: postId!, platform: a.platform, channel_account_id: a.id })),
+        ...platforms.map((platform) => ({ post_id: postId!, platform, channel_account_id: null })),
+      ];
+
+      const { error: targetError } = await supabase.from("post_targets").insert(rows);
       if (targetError) throw targetError;
 
       return postId!;
@@ -119,6 +163,7 @@ function ComposePage() {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
       toast.success(nextStatus === "pending" ? "ส่งขออนุมัติแล้ว" : "บันทึกร่างแล้ว");
       navigate({ to: "/" });
     },
@@ -139,29 +184,84 @@ function ComposePage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "ลบไม่สำเร็จ"),
   });
 
-  const toggle = (platform: Platform) =>
-    setSelected((prev) =>
+  const toggleAccount = (accountId: string) =>
+    setAccountIds((prev) =>
+      prev.includes(accountId) ? prev.filter((p) => p !== accountId) : [...prev, accountId],
+    );
+
+  const togglePlatform = (platform: Platform) =>
+    setPlatforms((prev) =>
       prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform],
     );
 
   const tightestLimit = Math.min(
-    ...(selected.length
-      ? selected.map((p) => PLATFORMS.find((x) => x.id === p)!.limit)
+    ...(selectedPlatformSet.size
+      ? [...selectedPlatformSet].map((p) => PLATFORMS.find((x) => x.id === p)!.limit)
       : [PLATFORMS[0]!.limit]),
   );
   const over = body.length > tightestLimit;
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-6 pb-8">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-semibold text-foreground">
-          {id ? "แก้ไขโพสต์" : "สร้างโพสต์"}
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+          {id ? "แก้ไขโพสต์" : "โพสต์ใหม่"}
         </h1>
         <span
-          className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${STATUS_META[status].className}`}
+          className={`rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_META[status].className}`}
         >
           {STATUS_META[status].label}
         </span>
+      </div>
+
+      {brands.length > 1 ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="brand">โพสต์ในชื่อแบรนด์</Label>
+          <select
+            id="brand"
+            value={activeBrand ?? ""}
+            onChange={(e) => {
+              setDraftBrand(e.target.value);
+              setAccountIds([]);
+              if (!brandId) setBrandId(null);
+            }}
+            disabled={locked}
+            className="h-11 w-full rounded-xl border border-input bg-card px-3 text-sm text-foreground"
+          >
+            {brands.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
+      <section className="space-y-2">
+        <Label>รูปและคลิป</Label>
+        <MediaPicker
+          brandId={activeBrand}
+          paths={mediaPaths}
+          onChange={setMediaPaths}
+          disabled={locked}
+        />
+      </section>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="body">เนื้อหาโพสต์</Label>
+        <Textarea
+          id="body"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={7}
+          placeholder="เขียนครั้งเดียว ส่งออกทุกช่องทางที่เลือก ✨"
+          disabled={locked}
+          className="rounded-2xl text-base"
+        />
+        <p className={`text-xs ${over ? "text-destructive" : "text-muted-foreground"}`}>
+          {body.length.toLocaleString("th-TH")} / {tightestLimit.toLocaleString("th-TH")} ตัวอักษร
+          (จำกัดตามช่องทางที่สั้นสุด)
+        </p>
       </div>
 
       <div className="space-y-1.5">
@@ -172,65 +272,80 @@ function ComposePage() {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="เช่น โปรโมชันสงกรานต์"
           disabled={locked}
+          className="rounded-xl"
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="body">เนื้อหาโพสต์</Label>
-        <Textarea
-          id="body"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={8}
-          placeholder="เขียนครั้งเดียว ส่งออกทุกช่องทางที่เลือก"
-          disabled={locked}
-        />
-        <p className={`text-xs ${over ? "text-destructive" : "text-muted-foreground"}`}>
-          {body.length.toLocaleString("th-TH")} / {tightestLimit.toLocaleString("th-TH")} ตัวอักษร
-          (จำกัดตามช่องทางที่สั้นสุด)
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="media">ลิงก์รูปหรือวิดีโอ</Label>
-        <Input
-          id="media"
-          value={mediaUrl}
-          onChange={(e) => setMediaUrl(e.target.value)}
-          placeholder="https://…"
-          inputMode="url"
-          disabled={locked}
-        />
-      </div>
-
-      <fieldset className="space-y-2" disabled={locked}>
-        <legend className="text-sm font-medium text-foreground">ช่องทางที่จะส่งออก</legend>
-        <div className="grid gap-2">
+      <fieldset className="space-y-3" disabled={locked}>
+        <legend className="text-sm font-semibold text-foreground">ช่องทางที่จะส่งออก</legend>
+        <div className="space-y-4">
           {PLATFORMS.map((platform) => {
-            const active = selected.includes(platform.id);
+            const pageAccounts = accounts.filter((a) => a.platform === platform.id);
+            const platformOn = selectedPlatformSet.has(platform.id);
             return (
-              <button
+              <div
                 key={platform.id}
-                type="button"
-                onClick={() => toggle(platform.id)}
-                aria-pressed={active}
-                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-                  active ? "border-primary bg-primary/5" : "border-border bg-card"
+                className={`rounded-2xl border p-3 transition-colors ${
+                  platformOn ? "border-primary/60 bg-primary/5" : "border-border bg-card"
                 }`}
               >
-                <span>
-                  <span className="block text-sm font-medium text-foreground">{platform.label}</span>
-                  <span className="block text-xs text-muted-foreground">{platform.note}</span>
-                </span>
-                <span
-                  className={`size-5 shrink-0 rounded-full border-2 ${
-                    active ? "border-primary bg-primary" : "border-input"
-                  }`}
-                />
-              </button>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">{platform.label}</span>
+                    <span className="block text-xs text-muted-foreground">{platform.note}</span>
+                  </span>
+                  {pageAccounts.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => togglePlatform(platform.id)}
+                      aria-pressed={platforms.includes(platform.id)}
+                      className={`size-6 shrink-0 rounded-full border-2 transition-colors ${
+                        platforms.includes(platform.id) ? "border-primary bg-primary" : "border-input"
+                      }`}
+                    />
+                  ) : (
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                      {pageAccounts.filter((a) => accountIds.includes(a.id)).length}/{pageAccounts.length}
+                    </span>
+                  )}
+                </div>
+
+                {pageAccounts.length > 0 ? (
+                  <ul className="mt-3 space-y-1.5">
+                    {pageAccounts.map((account) => {
+                      const on = accountIds.includes(account.id);
+                      return (
+                        <li key={account.id}>
+                          <button
+                            type="button"
+                            onClick={() => toggleAccount(account.id)}
+                            aria-pressed={on}
+                            className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
+                              on
+                                ? "border-primary bg-primary/10 text-foreground"
+                                : "border-border bg-background text-muted-foreground"
+                            }`}
+                          >
+                            <span className="truncate">{account.account_name}</span>
+                            <span
+                              className={`size-5 shrink-0 rounded-full border-2 ${
+                                on ? "border-primary bg-primary" : "border-input"
+                              }`}
+                            />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </div>
             );
           })}
         </div>
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Sparkles className="mt-0.5 size-3.5 shrink-0 text-accent" />
+          เพิ่มเพจได้หลายเพจต่อช่องทางที่หน้าตั้งค่า แล้วเลือกส่งพร้อมกันได้เลย
+        </p>
       </fieldset>
 
       <div className="space-y-1.5">
@@ -241,6 +356,7 @@ function ComposePage() {
           value={scheduledAt}
           onChange={(e) => setScheduledAt(e.target.value)}
           disabled={locked}
+          className="rounded-xl"
         />
         <p className="text-xs text-muted-foreground">
           เว้นว่างได้ถ้ายังไม่กำหนดเวลา — โพสต์จะรออยู่ในคิวหลังอนุมัติ
@@ -248,9 +364,9 @@ function ComposePage() {
       </div>
 
       {!locked ? (
-        <div className="flex flex-col gap-2 pt-2">
+        <div className="flex flex-col gap-2 pt-1">
           <Button
-            className="h-11"
+            className="h-12 rounded-xl text-base font-semibold"
             onClick={() => save.mutate("pending")}
             disabled={save.isPending || over}
           >
@@ -258,7 +374,7 @@ function ComposePage() {
           </Button>
           <Button
             variant="outline"
-            className="h-11"
+            className="h-12 rounded-xl"
             onClick={() => save.mutate("draft")}
             disabled={save.isPending}
           >
@@ -276,7 +392,7 @@ function ComposePage() {
           ) : null}
         </div>
       ) : (
-        <p className="rounded-lg border border-border bg-secondary p-4 text-sm text-muted-foreground">
+        <p className="rounded-2xl border border-border bg-secondary p-4 text-sm text-muted-foreground">
           โพสต์นี้เผยแพร่แล้ว จึงแก้ไขไม่ได้
         </p>
       )}
