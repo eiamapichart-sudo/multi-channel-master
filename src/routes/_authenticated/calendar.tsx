@@ -7,12 +7,12 @@ import { PostCard, type PostRow } from "@/components/app/PostCard";
 export const Route = createFileRoute("/_authenticated/calendar")({
   head: () => ({
     meta: [
-      { title: "ปฏิทินเผยแพร่ — Social Publisher" },
+      { title: "ปฏิทินเผยแพร่ — Social Post" },
       {
         name: "description",
-        content: "ดูคิวโพสต์ที่ตั้งเวลาไว้ล่วงหน้าเรียงตามวัน ตามเวลาไทย ทุกช่องทางในมุมมองเดียว",
+        content: "ดูคิวโพสต์ที่ตั้งเวลาไว้ล่วงหน้าเรียงตามวัน ตามเวลาไทย ทุกช่องทางและทุกแบรนด์ในมุมมองเดียว",
       },
-      { property: "og:title", content: "ปฏิทินเผยแพร่ — Social Publisher" },
+      { property: "og:title", content: "ปฏิทินเผยแพร่ — Social Post" },
       {
         property: "og:description",
         content: "คิวโพสต์ล่วงหน้าทุกช่องทาง เรียงตามวันในเวลาไทย",
@@ -32,19 +32,23 @@ const dayLabel = (iso: string) =>
     timeZone: "Asia/Bangkok",
   }).format(new Date(iso));
 
+const SELECT =
+  "id, brand_id, title, body, media_url, media_urls, scheduled_at, status, post_targets(id, platform, status)";
+
 function CalendarPage() {
-  const { brandId } = useBrand();
+  const { brandId, brands, isAll, brandName } = useBrand();
 
   const { data: posts = [], isLoading } = useQuery({
-    queryKey: ["calendar", brandId],
-    enabled: !!brandId,
+    queryKey: ["calendar", brandId ?? "all"],
+    enabled: brands.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("posts")
-        .select("id, title, body, media_url, scheduled_at, status, post_targets(id, platform, status)")
-        .eq("brand_id", brandId!)
+        .select(SELECT)
         .not("scheduled_at", "is", null)
         .order("scheduled_at", { ascending: true });
+      if (brandId) query = query.eq("brand_id", brandId);
+      const { data, error } = await query;
       if (error) throw error;
       return data as unknown as PostRow[];
     },
@@ -58,7 +62,7 @@ function CalendarPage() {
 
   return (
     <div className="space-y-5 pb-6">
-      <h1 className="font-display text-xl font-semibold text-foreground">ปฏิทินเผยแพร่</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">ปฏิทินเผยแพร่</h1>
 
       {isLoading ? (
         <p className="py-10 text-center text-sm text-muted-foreground">กำลังโหลด…</p>
@@ -69,11 +73,13 @@ function CalendarPage() {
       ) : (
         Object.entries(groups).map(([day, items]) => (
           <section key={day} className="space-y-3">
-            <h2 className="font-display text-sm font-semibold text-primary">{day}</h2>
+            <h2 className="font-mono text-[11px] font-semibold uppercase tracking-widest text-accent">
+              {day}
+            </h2>
             <ul className="space-y-3">
               {items.map((post) => (
                 <li key={post.id}>
-                  <PostCard post={post} />
+                  <PostCard post={post} brandName={isAll ? brandName(post.brand_id) : undefined} />
                 </li>
               ))}
             </ul>
