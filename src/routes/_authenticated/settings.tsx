@@ -2,13 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Layers, Trash2 } from "lucide-react";
+import { Layers, Link2, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { sb } from "@/lib/supabase-loose";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FacebookConnectCard } from "@/components/app/FacebookConnectCard";
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -28,6 +30,14 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 });
 
+type ChannelRow = {
+  id: string;
+  platform: Platform;
+  account_name: string;
+  connected: boolean;
+  external_id: string | null;
+};
+
 function SettingsPage() {
   const { brands, brandId, brand, isAll, setBrandId, refresh } = useBrand();
   const { user, signOut } = useAuth();
@@ -42,13 +52,13 @@ function SettingsPage() {
     queryKey: ["channels", targetBrand],
     enabled: !!targetBrand,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from("channel_accounts")
-        .select("id, platform, account_name, connected")
+        .select("id, platform, account_name, connected, external_id")
         .eq("brand_id", targetBrand!)
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return data;
+      return (data ?? []) as ChannelRow[];
     },
   });
 
@@ -94,7 +104,10 @@ function SettingsPage() {
       const { error } = await supabase.from("channel_accounts").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels", targetBrand] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["channels", targetBrand] });
+      queryClient.invalidateQueries({ queryKey: ["facebook-pages"] });
+    },
   });
 
   return (
@@ -161,6 +174,11 @@ function SettingsPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="font-display text-sm font-semibold text-foreground">เชื่อมต่อช่องทางจริง</h2>
+        <FacebookConnectCard brandId={targetBrand} />
+      </section>
+
+      <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-foreground">
           เพจ/บัญชีของ {brand?.name ?? brands.find((b) => b.id === targetBrand)?.name ?? "—"}
         </h2>
@@ -178,8 +196,13 @@ function SettingsPage() {
                   </div>
                   <ul className="divide-y divide-border">
                     {group.map((c) => (
-                      <li key={c.id} className="flex items-center justify-between px-4 py-2.5">
-                        <span className="min-w-0 truncate text-sm text-foreground">{c.account_name}</span>
+                      <li key={c.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-sm text-foreground">{c.account_name}</span>
+                          {c.connected && c.external_id ? (
+                            <Link2 className="size-3.5 shrink-0 text-primary" aria-label="เชื่อมต่อแล้ว" />
+                          ) : null}
+                        </span>
                         <button
                           type="button"
                           aria-label={`ลบ ${c.account_name}`}
@@ -233,7 +256,8 @@ function SettingsPage() {
             เพิ่มเพจ
           </Button>
           <p className="text-xs text-muted-foreground">
-            เพิ่มได้หลายเพจต่อหนึ่งช่องทาง เช่น Facebook หลายเพจ แล้วเลือกส่งพร้อมกันตอนสร้างโพสต์
+            ช่องนี้ใช้จดชื่อเพจไว้ก่อนได้ ส่วน Facebook ให้กด “เชื่อมต่อ Facebook” ด้านบนแทน
+            ระบบจะดึงชื่อเพจจริงมาให้เอง
           </p>
         </div>
       </section>
