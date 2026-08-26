@@ -9,7 +9,7 @@ import { useBrand } from "@/hooks/useBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PLATFORMS, platformLabel, type Platform } from "@/lib/platforms";
+import { PLATFORMS, type Platform } from "@/lib/platforms";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
