@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Video, X } from "lucide-react";
 import { toast } from "sonner";
-import { removeMedia, signMedia, uploadMedia, type MediaItem } from "@/lib/media";
+import { isVideoPath, removeMedia, signMedia, uploadMedia, type MediaItem } from "@/lib/media";
 
 type Props = {
   brandId: string | null;
