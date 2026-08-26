@@ -29,15 +29,38 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
     };
   }, [paths.join("|")]);
 
+  const currentKind: "image" | "video" | null = paths.length
+    ? isVideoPath(paths[0]!)
+      ? "video"
+      : "image"
+    : null;
+
   const pick = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!brandId) {
       toast.error("เลือกแบรนด์ก่อนอัปโหลด");
       return;
     }
+    const list = Array.from(files);
+    const kinds = new Set(list.map((f) => (f.type.startsWith("video/") ? "video" : "image")));
+    if (kinds.size > 1) {
+      toast.error("โพสต์เดียวกันผสมรูปกับวิดีโอไม่ได้ — เลือกรูปทั้งหมด หรือวิดีโอทั้งหมด");
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+    const nextKind = [...kinds][0] as "image" | "video";
+    if (currentKind && nextKind !== currentKind) {
+      toast.error(
+        currentKind === "image"
+          ? "โพสต์นี้เป็นอัลบัมรูป เพิ่มได้เฉพาะรูป"
+          : "โพสต์นี้เป็นวิดีโอ เพิ่มได้เฉพาะวิดีโอ",
+      );
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
     setBusy(true);
     try {
-      const added = await uploadMedia(brandId, Array.from(files));
+      const added = await uploadMedia(brandId, list);
       onChange([...paths, ...added]);
       toast.success(`อัปโหลด ${added.length} ไฟล์แล้ว`);
     } catch (error) {
