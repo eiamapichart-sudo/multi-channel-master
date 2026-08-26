@@ -14,7 +14,7 @@ const APP_SECRET = () => process.env["FACEBOOK_APP_SECRET"] ?? "";
 /** ใส่เฉพาะเมื่อใช้ Facebook Login for Business แบบมี Configuration ID */
 const CONFIG_ID = () => process.env["FACEBOOK_CONFIG_ID"] ?? "";
 
-/** สิทธิ์ที่ Social Post ต้องใช้ — แค่เห็นรายชื่อเพจกับโพสต์ ไม่ยุ่งกับแชท/คอมเมนต์ */
+/** สิทธิ์ที่ Social Post ต้องใช้ — ใช้เฉพาะกรณีแอปแบบเก่าที่ยังรับ scope */
 export const FB_SCOPES = (
   process.env["FACEBOOK_SCOPES"] ??
   "pages_show_list,pages_read_engagement,pages_manage_posts"
@@ -113,8 +113,14 @@ export function buildLoginUrl(redirectUri: string, state: string): string {
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", FB_SCOPES);
-  if (CONFIG_ID()) url.searchParams.set("config_id", CONFIG_ID());
+
+  // แอปที่ใช้ Facebook Login for Business รับได้เฉพาะ config_id
+  // ถ้าส่ง scope ไปด้วย Meta จะตอบ "Invalid Scopes" แล้วเปิดหน้าอนุญาตไม่ได้เลย
+  if (CONFIG_ID()) {
+    url.searchParams.set("config_id", CONFIG_ID());
+  } else {
+    url.searchParams.set("scope", FB_SCOPES);
+  }
   return url.toString();
 }
 
@@ -130,7 +136,7 @@ export async function exchangeCodeForToken(code: string, redirectUri: string): P
   return json.access_token as string;
 }
 
-/** user token อายุสั้น → อายุยาว (~60 วัน) — จำเป็น เพราะ page token ที่ได้ต่อจากนี้จะไม่หมดอายุ */
+/** user token อายุสั้น → อายุยาว (~60 วัน) */
 export async function exchangeForLongLivedToken(shortToken: string) {
   assertFacebookConfigured();
   const json = await graphGet("oauth/access_token", {
@@ -155,7 +161,7 @@ export type FbPage = {
   canCreateContent: boolean;
 };
 
-/** รายชื่อเพจที่ผู้ใช้เป็นแอดมิน พร้อม Page access token ของแต่ละเพจ */
+/** รายชื่อเพจที่ผู้ใช้เป็นแอดมิน พร้อม Page access token */
 export async function listPages(userToken: string): Promise<FbPage[]> {
   const pages: FbPage[] = [];
   let after: string | undefined;
@@ -211,7 +217,7 @@ export async function publishTextPost(
   return { postId: String(json.id), permalink: permalinkFromPostId(String(json.id)) };
 }
 
-/** อัปรูปแบบยังไม่เผยแพร่ คืน photo id — ใช้คุมลำดับรูปในอัลบัมให้ตรงเป๊ะ */
+/** อัปรูปแบบยังไม่เผยแพร่ คืน photo id */
 async function uploadUnpublishedPhoto(pageId: string, pageToken: string, imageUrl: string) {
   const json = await graphPost(
     `${pageId}/photos`,
@@ -277,7 +283,7 @@ export function humanizeFacebookError(error: unknown): string {
       return "สิทธิ์ไม่พอสำหรับโพสต์ลงเพจนี้ — ตรวจว่าเป็นแอดมินเพจ และแอปได้สิทธิ์ pages_manage_posts";
     if (error.code === 4 || error.code === 17 || error.code === 32)
       return "Facebook จำกัดจำนวนคำขอชั่วคราว — ระบบจะลองใหม่รอบถัดไป";
-    if (error.code === 100) return `Facebook ปนิเสธคำขอ: ${error.message}`;
+    if (error.code === 100) return `Facebook ปฏิเสธคำขอ: ${error.message}`;
     return error.message;
   }
   return error instanceof Error ? error.message : "เผยแพร่ไม่สำเร็จ";
