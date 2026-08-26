@@ -10,12 +10,13 @@ import { STATUS_META, type PostStatus } from "@/lib/platforms";
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
-      { title: "โพสต์ทั้งหมด — Social Publisher" },
+      { title: "ฟีดโพสต์ — Social Post" },
       {
         name: "description",
-        content: "ดูโพสต์ทุกช่องทางของแบรนด์ในที่เดียว ทั้งร่าง รออนุมัติ ตั้งเวลา และเผยแพร่แล้ว",
+        content:
+          "ดูโพสต์ทุกช่องทางทั้งแบบรายแบรนด์และภาพรวมทุกแบรนด์ ทั้งร่าง รออนุมัติ ตั้งเวลา และเผยแพร่แล้ว",
       },
-      { property: "og:title", content: "โพสต์ทั้งหมด — Social Publisher" },
+      { property: "og:title", content: "ฟีดโพสต์ — Social Post" },
       {
         property: "og:description",
         content: "จัดการโพสต์โซเชียลหลายช่องทางของทุกแบรนด์ในหน้าเดียว",
@@ -35,19 +36,20 @@ const FILTERS: { key: "all" | PostStatus; label: string }[] = [
   { key: "published", label: STATUS_META.published.label },
 ];
 
+const SELECT =
+  "id, brand_id, title, body, media_url, media_urls, scheduled_at, status, post_targets(id, platform, status)";
+
 function FeedPage() {
-  const { brandId, brands, loading } = useBrand();
+  const { brandId, brands, loading, isAll, brandName } = useBrand();
   const [filter, setFilter] = useState<"all" | PostStatus>("all");
 
   const { data: posts = [], isLoading } = useQuery({
-    queryKey: ["posts", brandId],
-    enabled: !!brandId,
+    queryKey: ["posts", brandId ?? "all"],
+    enabled: brands.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("posts")
-        .select("id, title, body, media_url, scheduled_at, status, post_targets(id, platform, status)")
-        .eq("brand_id", brandId!)
-        .order("created_at", { ascending: false });
+      let query = supabase.from("posts").select(SELECT).order("created_at", { ascending: false });
+      if (brandId) query = query.eq("brand_id", brandId);
+      const { data, error } = await query;
       if (error) throw error;
       return data as unknown as PostRow[];
     },
@@ -55,14 +57,14 @@ function FeedPage() {
 
   if (!loading && brands.length === 0) {
     return (
-      <section className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
-        <h1 className="font-display text-lg font-semibold text-foreground">เริ่มด้วยการเพิ่มแบรนด์</h1>
+      <section className="rounded-2xl border border-dashed border-border bg-card p-6 text-center">
+        <h1 className="font-display text-lg font-bold text-foreground">เริ่มด้วยการเพิ่มแบรนด์</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           แต่ละแบรนด์มีช่องทางและคิวโพสต์ของตัวเอง เพิ่มแบรนด์แรกได้ที่หน้าตั้งค่า
         </p>
         <Link
           to="/settings"
-          className="mt-5 inline-flex h-11 items-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
+          className="mt-5 inline-flex h-11 items-center rounded-xl bg-[var(--gradient-brand)] px-5 text-sm font-semibold text-primary-foreground"
         >
           ไปหน้าตั้งค่า
         </Link>
@@ -73,12 +75,14 @@ function FeedPage() {
   const visible = filter === "all" ? posts : posts.filter((p) => p.status === filter);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-xl font-semibold text-foreground">โพสต์ทั้งหมด</h1>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+          {isAll ? "ภาพรวมทุกแบรนด์" : "ฟีดโพสต์"}
+        </h1>
         <Link
           to="/compose"
-          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+          className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[var(--gradient-brand)] px-3.5 text-sm font-semibold text-primary-foreground"
         >
           <PenSquare className="size-4" /> สร้าง
         </Link>
@@ -90,9 +94,9 @@ function FeedPage() {
             key={f.key}
             type="button"
             onClick={() => setFilter(f.key)}
-            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
               filter === f.key
-                ? "border-primary bg-primary/10 text-primary"
+                ? "border-primary bg-primary/15 text-primary"
                 : "border-border bg-card text-muted-foreground"
             }`}
           >
@@ -109,7 +113,7 @@ function FeedPage() {
         <ul className="space-y-3">
           {visible.map((post) => (
             <li key={post.id}>
-              <PostCard post={post} />
+              <PostCard post={post} brandName={isAll ? brandName(post.brand_id) : undefined} />
             </li>
           ))}
         </ul>
