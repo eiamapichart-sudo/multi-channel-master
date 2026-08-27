@@ -132,7 +132,10 @@ export type Database = {
           channel_account_id: string
           connected_by: string | null
           external_id: string | null
+          meta: Json
           platform: Database["public"]["Enums"]["platform"]
+          refresh_expires_at: string | null
+          refresh_token: string | null
           scopes: string[]
           token_expires_at: string | null
           updated_at: string
@@ -142,7 +145,10 @@ export type Database = {
           channel_account_id: string
           connected_by?: string | null
           external_id?: string | null
+          meta?: Json
           platform: Database["public"]["Enums"]["platform"]
+          refresh_expires_at?: string | null
+          refresh_token?: string | null
           scopes?: string[]
           token_expires_at?: string | null
           updated_at?: string
@@ -152,7 +158,10 @@ export type Database = {
           channel_account_id?: string
           connected_by?: string | null
           external_id?: string | null
+          meta?: Json
           platform?: Database["public"]["Enums"]["platform"]
+          refresh_expires_at?: string | null
+          refresh_token?: string | null
           scopes?: string[]
           token_expires_at?: string | null
           updated_at?: string
