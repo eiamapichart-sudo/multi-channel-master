@@ -8,7 +8,11 @@ import { db } from "@/lib/db.server";
 import {
   assertFacebookConfigured,
   humanizeFacebookError,
+  inspectIgContainer,
+  instagramPermalinkFallback,
   permalinkFromPostId,
+  publishExistingIgContainer,
+  publishInstagramPost,
   publishPhotoPost,
   publishTextPost,
   publishVideoPost,
@@ -31,6 +35,8 @@ type TargetRow = {
   status: string;
   attempt_count: number;
   external_id: string | null;
+  /** Instagram: รหัส container ที่สร้างค้างไว้ ใช้ต่อยอดตอนลองใหม่ กันโพสต์ซ้ำ */
+  pending_external_id: string | null;
 };
 
 export type PublishSummary = {
@@ -99,6 +105,45 @@ async function publishToFacebook(
 }
 
 /**
+ * โพสต์ลง Instagram หนึ่งบัญชี
+ * - ถ้ารอบก่อนสร้าง container ค้างไว้ (pending_external_id) จะตรวจและต่อยอดจากใบเดิม
+ *   เพื่อไม่ให้เกิดโพสต์ซ้ำบน IG
+ */
+async function publishToInstagram(
+  target: TargetRow,
+  igUserId: string,
+  token: string,
+  caption: string,
+  mediaPaths: string[],
+): Promise<PublishResult> {
+  if (mediaPaths.length === 0) {
+    throw new Error("Instagram ต้องมีรูปหรือคลิปอย่างน้อย 1 ไฟล์ — โพสต์ข้อความล้วนไม่ได้");
+  }
+
+  const videos = mediaPaths.filter(isVideoPath);
+  if (videos.length > 0 && videos.length !== mediaPaths.length) {
+    throw new Error("Instagram ไม่รับรูปปนคลิปในโพสต์เดียว — เลือกอย่างใดอย่างหนึ่ง");
+  }
+  const kind = videos.length > 0 ? "video" : "image";
+
+  // รอบก่อนอาจสร้าง container ไว้แล้วแต่ยังไม่ได้สั่งเผยแพร่ → ใช้ใบเดิมต่อ
+  if (target.pending_external_id) {
+    const state = await inspectIgContainer(igUserId, token, target.pending_external_id);
+    if (state.state === "published") return state.result;
+    if (state.state === "ready") {
+      return publishExistingIgContainer(igUserId, token, target.pending_external_id);
+    }
+    // gone → ใบเดิมตายแล้ว สร้างใหม่ด้านล่าง
+  }
+
+  const urls = await signMediaPaths(mediaPaths);
+  return publishInstagramPost(igUserId, token, caption, urls, kind, async (containerId) => {
+    // จดรหัส container ไว้ก่อนสั่งเผยแพร่จริง — ถ้าพังตรงนี้ รอบหน้าจะมาต่อจากใบนี้
+    await updateWithRetry("post_targets", target.id, { pending_external_id: containerId });
+  });
+}
+
+/**
  * เผยแพร่โพสต์หนึ่งโพสต์ไปทุกเพจที่เลือกไว้
  * ปลอดภัยที่จะเรียกซ้ำ — ปลายทางที่ส่งไปแล้วจะถูกข้าม
  */
@@ -115,7 +160,9 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
 
   const { data: targetRows, error: targetError } = await db
     .from("post_targets")
-    .select("id, platform, channel_account_id, override_body, status, attempt_count, external_id")
+    .select(
+      "id, platform, channel_account_id, override_body, status, attempt_count, external_id, pending_external_id",
+    )
     .eq("post_id", postId);
   if (targetError) throw new Error(targetError.message);
 
@@ -132,7 +179,7 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       continue;
     }
 
-    if (target.platform !== "facebook" || !target.channel_account_id) {
+    if (!["facebook", "instagram"].includes(target.platform) || !target.channel_account_id) {
       summary.skipped += 1;
       continue;
     }
@@ -145,7 +192,10 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
     if (target.external_id) {
       await updateWithRetry("post_targets", target.id, {
         status: "published",
-        external_url: permalinkFromPostId(target.external_id),
+        external_url:
+          target.platform === "instagram"
+            ? instagramPermalinkFallback(target.external_id)
+            : permalinkFromPostId(target.external_id),
         error_message: null,
         published_at: new Date().toISOString(),
       });
@@ -178,7 +228,11 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         .maybeSingle();
       if (accountError) throw new Error(accountError.message);
       if (!account?.external_id || !account.connected) {
-        throw new Error("เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน");
+        throw new Error(
+          target.platform === "instagram"
+            ? "บัญชี Instagram นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ Facebook ในหน้าตั้งค่าก่อน"
+            : "เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน",
+        );
       }
 
       const { data: credential, error: credentialError } = await db
@@ -188,24 +242,34 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         .maybeSingle();
       if (credentialError) throw new Error(credentialError.message);
       if (!credential?.access_token) {
-        throw new Error("ไม่พบสิทธิ์เข้าถึงเพจ — กดเชื่อมต่อ Facebook ใหม่");
+        throw new Error("ไม่พบสิทธิ์เข้าถึงบัญชี — กดเชื่อมต่อใหม่ในหน้าตั้งค่า");
       }
       if (credential.token_expires_at && new Date(credential.token_expires_at) < new Date()) {
-        throw new Error("สิทธิ์เข้าถึงเพจหมดอายุ — กดเชื่อมต่อ Facebook ใหม่");
+        throw new Error("สิทธิ์เข้าถึงบัญชีหมดอายุ — กดเชื่อมต่อใหม่ในหน้าตั้งค่า");
       }
 
       const message = (target.override_body ?? post.body ?? "").trim();
-      const result = await publishToFacebook(
-        account.external_id,
-        credential.access_token,
-        message,
-        mediaPaths,
-      );
+      const result =
+        target.platform === "instagram"
+          ? await publishToInstagram(
+              target,
+              account.external_id,
+              credential.access_token,
+              message,
+              mediaPaths,
+            )
+          : await publishToFacebook(
+              account.external_id,
+              credential.access_token,
+              message,
+              mediaPaths,
+            );
 
       const saved = await updateWithRetry("post_targets", target.id, {
         status: "published",
         external_id: result.postId,
         external_url: result.permalink,
+        pending_external_id: null,
         error_message: null,
         published_at: new Date().toISOString(),
       });
@@ -256,7 +320,7 @@ async function syncPostStatus(postId: string) {
   const anyFailed = rows.some((r) => r.status === "failed");
   const anyRetryable = rows.some(
     (r) =>
-      r.platform === "facebook" &&
+      ["facebook", "instagram"].includes(r.platform) &&
       r.channel_account_id &&
       ["queued", "publishing"].includes(r.status) &&
       r.attempt_count < MAX_ATTEMPTS,
@@ -295,7 +359,7 @@ export async function runDuePosts(): Promise<PublishSummary[]> {
   const { data: dueTargets, error } = await db
     .from("post_targets")
     .select("post_id, posts!inner(id, status, scheduled_at)")
-    .eq("platform", "facebook")
+    .in("platform", ["facebook", "instagram"])
     .not("channel_account_id", "is", null)
     .in("status", ["queued", "failed"])
     .lt("attempt_count", MAX_ATTEMPTS)
