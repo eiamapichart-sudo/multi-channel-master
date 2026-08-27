@@ -79,6 +79,7 @@ export const Route = createFileRoute("/api/oauth/facebook/callback")({
                 category: p.category,
                 avatarUrl: p.avatarUrl,
                 canCreateContent: p.canCreateContent,
+                instagram: p.instagram,
               })),
               expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
             })
