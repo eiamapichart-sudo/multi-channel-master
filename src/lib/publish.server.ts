@@ -441,9 +441,16 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         .eq("id", target.channel_account_id);
       summary.published += 1;
     } catch (error) {
-      const message = humanizeFacebookError(error);
+      let message: string;
+      if (isTikTok) {
+        const { humanizeTikTokError } = await import("@/lib/tiktok.server");
+        message = humanizeTikTokError(error);
+      } else {
+        message = humanizeFacebookError(error);
+      }
       summary.failed += 1;
       summary.errors.push(message);
+
 
       await updateWithRetry("post_targets", target.id, { status: "failed", error_message: message });
 
