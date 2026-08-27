@@ -47,6 +47,19 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const url = new URL(request.url);
+
+      // Public, unauthenticated: TikTok domain-verification file.
+      // Content is served from the TIKTOK_SITE_VERIFICATION secret so the value
+      // never lives in source. Returns plain text only — no HTML wrapper.
+      if (url.pathname === "/tiktok-developers-site-verification.txt") {
+        const code = process.env["TIKTOK_SITE_VERIFICATION"] ?? "";
+        return new Response(code, {
+          status: 200,
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        });
+      }
+
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
