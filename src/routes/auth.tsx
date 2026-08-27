@@ -145,5 +145,7 @@ function AuthPage() {
         </button>
       </div>
     </main>
+    <SiteFooter />
+    </div>
   );
 }
