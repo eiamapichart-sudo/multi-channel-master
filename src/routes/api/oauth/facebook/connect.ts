@@ -130,6 +130,79 @@ export const Route = createFileRoute("/api/oauth/facebook/connect")({
               if (credentialError) throw new Error(credentialError.message);
 
               connected.push({ id: page.id, name: page.name });
+
+              // เพจที่ผูก Instagram Business/Creator ไว้ → สร้างช่องทาง Instagram ให้อัตโนมัติ
+              // ใช้ Page access token ตัวเดียวกับเพจในการโพสต์ลง IG
+              if (page.instagram) {
+                const ig = page.instagram;
+                const igName = `@${ig.username}`;
+
+                let igAccountId: string | null = null;
+                const { data: igByExternal } = await db
+                  .from("channel_accounts")
+                  .select("id")
+                  .eq("brand_id", session.brand_id)
+                  .eq("platform", "instagram")
+                  .eq("external_id", ig.id)
+                  .maybeSingle();
+                igAccountId = igByExternal?.id ?? null;
+
+                if (!igAccountId) {
+                  const { data: igByName } = await db
+                    .from("channel_accounts")
+                    .select("id")
+                    .eq("brand_id", session.brand_id)
+                    .eq("platform", "instagram")
+                    .eq("account_name", igName)
+                    .is("external_id", null)
+                    .maybeSingle();
+                  igAccountId = igByName?.id ?? null;
+                }
+
+                const igPatch = {
+                  account_name: igName,
+                  external_id: ig.id,
+                  avatar_url: ig.avatarUrl,
+                  connected: true,
+                  connected_at: new Date().toISOString(),
+                  last_error: null,
+                };
+
+                if (igAccountId) {
+                  const { error } = await db
+                    .from("channel_accounts")
+                    .update(igPatch)
+                    .eq("id", igAccountId);
+                  if (error) throw new Error(error.message);
+                } else {
+                  const { data: inserted, error } = await db
+                    .from("channel_accounts")
+                    .insert({ brand_id: session.brand_id, platform: "instagram", ...igPatch })
+                    .select("id")
+                    .single();
+                  if (error) throw new Error(error.message);
+                  igAccountId = inserted.id;
+                }
+
+                const { error: igCredentialError } = await db
+                  .from("channel_credentials")
+                  .upsert(
+                    {
+                      channel_account_id: igAccountId,
+                      platform: "instagram",
+                      external_id: ig.id,
+                      access_token: page.accessToken,
+                      token_expires_at: null,
+                      scopes: ["instagram_basic", "instagram_content_publish"],
+                      connected_by: user.userId,
+                      updated_at: new Date().toISOString(),
+                    },
+                    { onConflict: "channel_account_id" },
+                  );
+                if (igCredentialError) throw new Error(igCredentialError.message);
+
+                connected.push({ id: ig.id, name: `${igName} (Instagram)` });
+              }
             } catch (pageError) {
               console.error("[facebook-connect]", page.id, pageError);
               skipped.push({
