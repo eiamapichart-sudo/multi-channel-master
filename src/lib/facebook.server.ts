@@ -9,6 +9,10 @@ import { createHmac } from "node:crypto";
 export const GRAPH_VERSION = process.env["FACEBOOK_GRAPH_VERSION"] ?? "v23.0";
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
+/** ไม่มี timeout = คำขอค้างได้ไม่จำกัด ซึ่งแปลว่าอาจโพสต์ไปแล้วแต่เราไม่รู้ แล้วไปโพสต์ซ้ำ */
+const REQUEST_TIMEOUT_MS = 30_000;
+const withTimeout = () => AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+
 const APP_ID = () => process.env["FACEBOOK_APP_ID"] ?? "";
 const APP_SECRET = () => process.env["FACEBOOK_APP_SECRET"] ?? "";
 /** ใส่เฉพาะเมื่อใช้ Facebook Login for Business แบบมี Configuration ID */
@@ -17,7 +21,7 @@ const CONFIG_ID = () => process.env["FACEBOOK_CONFIG_ID"] ?? "";
 /** สิทธิ์ที่ Social Post ต้องใช้ — ใช้เฉพาะกรณีแอปแบบเก่าที่ยังรับ scope */
 export const FB_SCOPES = (
   process.env["FACEBOOK_SCOPES"] ??
-  "pages_show_list,pages_read_engagement,pages_manage_posts"
+  "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
 ).trim();
 
 export function assertFacebookConfigured() {
@@ -53,7 +57,10 @@ async function parseOrThrow(res: Response, context: string) {
   try {
     json = text ? JSON.parse(text) : {};
   } catch {
-    throw new FacebookError(`${context}: Facebook ตอบกลับผิดรูปแบบ (HTTP ${res.status})`, res.status);
+    throw new FacebookError(
+      `${context}: Facebook ตอบกลับผิดรูปแบบ (HTTP ${res.status})`,
+      res.status,
+    );
   }
   if (!res.ok || json.error) {
     const e = json.error ?? {};
@@ -81,7 +88,7 @@ export async function graphGet(
     const proof = appSecretProof(accessToken);
     if (proof) url.searchParams.set("appsecret_proof", proof);
   }
-  return parseOrThrow(await fetch(url.toString()), `GET ${path}`);
+  return parseOrThrow(await fetch(url.toString(), { signal: withTimeout() }), `GET ${path}`);
 }
 
 export async function graphPost(
@@ -101,8 +108,19 @@ export async function graphPost(
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: form.toString(),
+    signal: withTimeout(),
   });
   return parseOrThrow(res, `POST ${path}`);
+}
+
+/** ใช้ลบโพสต์ที่เคยส่งขึ้นเพจไปแล้ว */
+export async function graphDelete(path: string, accessToken: string) {
+  const url = new URL(`${GRAPH}/${path.replace(/^\//, "")}`);
+  url.searchParams.set("access_token", accessToken);
+  const proof = appSecretProof(accessToken);
+  if (proof) url.searchParams.set("appsecret_proof", proof);
+  const res = await fetch(url.toString(), { method: "DELETE", signal: withTimeout() });
+  return parseOrThrow(res, `DELETE ${path}`);
 }
 
 /** URL หน้าขออนุญาตของ Facebook ที่ผู้ใช้ต้องถูกพาไป */
@@ -152,6 +170,12 @@ export async function exchangeForLongLivedToken(shortToken: string) {
   };
 }
 
+export type IgAccount = {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+};
+
 export type FbPage = {
   id: string;
   name: string;
@@ -159,6 +183,8 @@ export type FbPage = {
   category: string | null;
   avatarUrl: string | null;
   canCreateContent: boolean;
+  /** บัญชี Instagram Business/Creator ที่ผูกกับเพจนี้ (ถ้ามี) */
+  instagram: IgAccount | null;
 };
 
 /** รายชื่อเพจที่ผู้ใช้เป็นแอดมิน พร้อม Page access token */
@@ -170,7 +196,12 @@ export async function listPages(userToken: string): Promise<FbPage[]> {
   do {
     const json = await graphGet(
       "me/accounts",
-      { fields: "id,name,access_token,category,tasks,picture{url}", limit: "100", after },
+      {
+        fields:
+          "id,name,access_token,category,tasks,picture{url},instagram_business_account{id,username,profile_picture_url}",
+        limit: "100",
+        after,
+      },
       userToken,
     );
     for (const p of json.data ?? []) {
@@ -181,6 +212,15 @@ export async function listPages(userToken: string): Promise<FbPage[]> {
         category: p.category ?? null,
         avatarUrl: p.picture?.data?.url ?? null,
         canCreateContent: Array.isArray(p.tasks) ? p.tasks.includes("CREATE_CONTENT") : true,
+        instagram: p.instagram_business_account?.id
+          ? {
+              id: String(p.instagram_business_account.id),
+              username: String(
+                p.instagram_business_account.username ?? p.instagram_business_account.id,
+              ),
+              avatarUrl: p.instagram_business_account.profile_picture_url ?? null,
+            }
+          : null,
       });
     }
     after = json.paging?.next ? json.paging?.cursors?.after : undefined;
@@ -288,3 +328,210 @@ export function humanizeFacebookError(error: unknown): string {
   }
   return error instanceof Error ? error.message : "เผยแพร่ไม่สำเร็จ";
 }
+
+// ---------------------------------------------------------------------------
+// Instagram — โพสต์ผ่านบัญชี Business/Creator ที่ผูกกับเพจ Facebook
+// ใช้ Page access token ตัวเดียวกับเพจที่ผูกไว้
+// ---------------------------------------------------------------------------
+
+/** จำนวนครั้งและระยะห่างในการถามสถานะคลิปที่ Instagram กำลังประมวลผล */
+const IG_POLL_TRIES = 30;
+const IG_POLL_DELAY_MS = 3000;
+/** รูปพร้อมเร็วกว่าคลิปมาก ไม่ต้องรอนาน */
+const IG_IMAGE_POLL_TRIES = 8;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** สร้าง "ตะกร้า" (container) หนึ่งใบ คืน id ไว้เอาไปสั่งเผยแพร่ */
+async function createIgContainer(
+  igUserId: string,
+  token: string,
+  body: Record<string, string | number | boolean | undefined>,
+) {
+  const json = await graphPost(`${igUserId}/media`, body, token);
+  const id = json.id ? String(json.id) : "";
+  if (!id) throw new Error("Instagram ไม่คืนรหัสสื่อกลับมา");
+  return id;
+}
+
+/** คลิปต้องรอ Instagram ประมวลผลให้เสร็จก่อนถึงจะเผยแพร่ได้ */
+async function waitForIgContainer(containerId: string, token: string, tries = IG_POLL_TRIES) {
+  for (let i = 0; i < tries; i += 1) {
+    const json = await graphGet(containerId, { fields: "status_code,status" }, token);
+    const code = String(json.status_code ?? "");
+    if (code === "FINISHED") return;
+    if (code === "ERROR" || code === "EXPIRED") {
+      throw new Error(`Instagram ประมวลผลไฟล์ไม่สำเร็จ: ${json.status ?? code}`);
+    }
+    await sleep(IG_POLL_DELAY_MS);
+  }
+  throw new Error("Instagram ใช้เวลาประมวลผลคลิปนานผิดปกติ — ระบบจะลองใหม่รอบถัดไป");
+}
+
+async function publishIgContainer(
+  igUserId: string,
+  token: string,
+  containerId: string,
+): Promise<PublishResult> {
+  const json = await graphPost(`${igUserId}/media_publish`, { creation_id: containerId }, token);
+  const mediaId = String(json.id ?? "");
+  if (!mediaId) throw new Error("Instagram ไม่คืนรหัสโพสต์กลับมา");
+
+  let permalink = `https://www.instagram.com/p/${mediaId}`;
+  try {
+    const info = await graphGet(mediaId, { fields: "permalink" }, token);
+    if (info.permalink) permalink = String(info.permalink);
+  } catch {
+    // ถ้าขอลิงก์ไม่ได้ก็ไม่เป็นไร โพสต์ขึ้นแล้ว
+  }
+  return { postId: mediaId, permalink };
+}
+
+/**
+ * โพสต์ลง Instagram
+ * - รูป 1 ใบ → โพสต์เดี่ยว
+ * - รูป 2–10 ใบ → carousel เรียงตามลำดับที่ส่งมา
+ * - คลิป 1 ไฟล์ → Reels
+ * Instagram ไม่รับโพสต์ข้อความล้วน และไม่รับรูปปนคลิปในโพสต์เดียว
+ */
+export async function publishInstagramPost(
+  igUserId: string,
+  token: string,
+  caption: string,
+  mediaUrls: string[],
+  kind: "image" | "video",
+  /** เรียกทันทีที่ได้รหัส container เพื่อให้ฝั่งเรียกจดไว้ก่อนสั่งเผยแพร่จริง */
+  onContainer?: (containerId: string) => Promise<void>,
+): Promise<PublishResult> {
+  if (mediaUrls.length === 0) {
+    throw new Error("Instagram ต้องมีรูปหรือคลิปอย่างน้อย 1 ไฟล์ — โพสต์ข้อความล้วนไม่ได้");
+  }
+
+  if (kind === "video") {
+    if (mediaUrls.length > 1) {
+      throw new Error("Instagram โพสต์คลิปได้ 1 ไฟล์ต่อโพสต์ — แยกเป็นหลายโพสต์แทน");
+    }
+    const containerId = await createIgContainer(igUserId, token, {
+      media_type: "REELS",
+      video_url: mediaUrls[0]!,
+      caption,
+    });
+    await waitForIgContainer(containerId, token);
+    await onContainer?.(containerId);
+    return publishIgContainer(igUserId, token, containerId);
+  }
+
+  if (mediaUrls.length > 10) throw new Error("Instagram แนบรูปได้ไม่เกิน 10 ใบต่อโพสต์");
+
+  if (mediaUrls.length === 1) {
+    const containerId = await createIgContainer(igUserId, token, {
+      image_url: mediaUrls[0]!,
+      caption,
+    });
+    await waitForIgContainer(containerId, token, IG_IMAGE_POLL_TRIES);
+    await onContainer?.(containerId);
+    return publishIgContainer(igUserId, token, containerId);
+  }
+
+  const children: string[] = [];
+  for (const url of mediaUrls) {
+    const child = await createIgContainer(igUserId, token, {
+      image_url: url,
+      is_carousel_item: true,
+    });
+    // ลูกทุกใบต้องพร้อมก่อน ไม่งั้นตัวแม่จะสร้างไม่ผ่าน
+    await waitForIgContainer(child, token, IG_IMAGE_POLL_TRIES);
+    children.push(child);
+  }
+  const carouselId = await createIgContainer(igUserId, token, {
+    media_type: "CAROUSEL",
+    children: children.join(","),
+    caption,
+  });
+  await waitForIgContainer(carouselId, token, IG_IMAGE_POLL_TRIES);
+  await onContainer?.(carouselId);
+  return publishIgContainer(igUserId, token, carouselId);
+}
+
+/** โพสต์ล่าสุดของบัญชี Instagram — ใช้ทวนสอบว่ารอบก่อนขึ้นไปแล้วหรือยัง */
+async function latestIgMedia(igUserId: string, token: string): Promise<PublishResult | null> {
+  try {
+    const json = await graphGet(`${igUserId}/media`, { fields: "id,permalink", limit: "1" }, token);
+    const first = (json["data"] ?? [])[0];
+    if (!first?.id) return null;
+    const id = String(first.id);
+    return { postId: id, permalink: String(first.permalink ?? instagramPermalinkFallback(id)) };
+  } catch {
+    return null;
+  }
+}
+
+export type IgContainerState =
+  /** พร้อมสั่งเผยแพร่ */
+  | { state: "ready" }
+  /** รอบก่อนขึ้นไปแล้ว — เอาผลมาบันทึก ไม่ต้องโพสต์ใหม่ */
+  | { state: "published"; result: PublishResult }
+  /** หมดอายุหรือพัง — ทิ้งแล้วเริ่มใหม่ได้ */
+  | { state: "gone" };
+
+/**
+ * ตรวจว่าสื่อที่ค้างไว้จากรอบก่อนอยู่ในสภาพไหน
+ * นี่คือด่านที่กันไม่ให้โพสต์ซ้ำ และกันไม่ให้โพสต์ค้างถาวรเพราะใบเดิมตายไปแล้ว
+ */
+export async function inspectIgContainer(
+  igUserId: string,
+  token: string,
+  containerId: string,
+): Promise<IgContainerState> {
+  let code = "";
+  try {
+    const json = await graphGet(containerId, { fields: "status_code" }, token);
+    code = String(json["status_code"] ?? "");
+  } catch {
+    return { state: "gone" };
+  }
+
+  if (code === "PUBLISHED") {
+    const latest = await latestIgMedia(igUserId, token);
+    return latest ? { state: "published", result: latest } : { state: "gone" };
+  }
+  if (code === "FINISHED") return { state: "ready" };
+  if (code === "IN_PROGRESS") {
+    await waitForIgContainer(containerId, token);
+    return { state: "ready" };
+  }
+  return { state: "gone" };
+}
+
+/**
+ * สั่งเผยแพร่ container ที่เคยสร้างค้างไว้จากรอบก่อน
+ * ใช้ตอนลองใหม่ เพื่อไม่ให้สร้างสื่อใบใหม่แล้วกลายเป็นโพสต์ซ้ำ
+ */
+export async function publishExistingIgContainer(
+  igUserId: string,
+  token: string,
+  containerId: string,
+): Promise<PublishResult> {
+  return publishIgContainer(igUserId, token, containerId);
+}
+
+/** ลิงก์โพสต์ Instagram จากรหัสสื่อ (เผื่อขอ permalink ไม่ได้) */
+export function instagramPermalinkFallback(mediaId: string) {
+  return `https://www.instagram.com/p/${mediaId}`;
+}
+
+// ---------------------------------------------------------------------------
+// การลบ
+// ---------------------------------------------------------------------------
+
+/** ลบโพสต์ออกจากเพจ Facebook จริง */
+export async function deleteFacebookPost(postId: string, pageToken: string) {
+  await graphDelete(postId, pageToken);
+}
+
+/**
+ * Instagram ไม่เปิดให้ลบโพสต์ผ่าน API
+ * ฟังก์ชันนี้มีไว้ให้ฝั่งเรียกใช้รู้ตัวและแจ้งผู้ใช้ ไม่ใช่ให้เงียบหาย
+ */
+export const INSTAGRAM_DELETE_UNSUPPORTED =
+  "Instagram ไม่เปิดให้ลบโพสต์ผ่าน API — ต้องเข้าไปลบเองในแอป Instagram";
