@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as PrdRouteImport } from './routes/prd'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authenticated/approvals'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
@@ -38,6 +40,16 @@ const AuthRoute = AuthRouteImport.update({
 const PrdRoute = PrdRouteImport.update({
   id: '/prd',
   path: '/prd',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -111,6 +123,8 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
   '/prd': typeof PrdRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/compose': typeof AuthenticatedComposeRoute
@@ -127,6 +141,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/prd': typeof PrdRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/compose': typeof AuthenticatedComposeRoute
@@ -146,6 +162,8 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/prd': typeof PrdRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/_authenticated/approvals': typeof AuthenticatedApprovalsRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/compose': typeof AuthenticatedComposeRoute
@@ -166,6 +184,8 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/prd'
+    | '/privacy'
+    | '/terms'
     | '/approvals'
     | '/calendar'
     | '/compose'
@@ -182,6 +202,8 @@ export interface FileRouteTypes {
   to:
     | '/auth'
     | '/prd'
+    | '/privacy'
+    | '/terms'
     | '/approvals'
     | '/calendar'
     | '/compose'
@@ -200,6 +222,8 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/prd'
+    | '/privacy'
+    | '/terms'
     | '/_authenticated/approvals'
     | '/_authenticated/calendar'
     | '/_authenticated/compose'
@@ -219,6 +243,8 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   PrdRoute: typeof PrdRoute
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
   ApiPublishCronRoute: typeof ApiPublishCronRoute
   ApiPublishNowRoute: typeof ApiPublishNowRoute
   ApiOauthFacebookCallbackRoute: typeof ApiOauthFacebookCallbackRoute
@@ -250,6 +276,20 @@ declare module '@tanstack/react-router' {
       path: '/prd'
       fullPath: '/prd'
       preLoaderRoute: typeof PrdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/': {
@@ -369,6 +409,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   PrdRoute: PrdRoute,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
   ApiPublishCronRoute: ApiPublishCronRoute,
   ApiPublishNowRoute: ApiPublishNowRoute,
   ApiOauthFacebookCallbackRoute: ApiOauthFacebookCallbackRoute,

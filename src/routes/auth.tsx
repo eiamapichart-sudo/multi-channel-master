@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SiteFooter } from "@/components/app/SiteFooter";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -78,7 +79,8 @@ function AuthPage() {
   };
 
   return (
-    <main className="flex min-h-dvh flex-col justify-center bg-background px-6 py-12">
+    <div className="dark min-h-dvh bg-background text-foreground">
+    <main className="flex flex-1 flex-col justify-center px-6 py-12">
       <div className="mx-auto w-full max-w-sm">
         <p className="font-mono text-xs tracking-widest text-primary">SOCIAL PUBLISHER</p>
         <h1 className="mt-2 font-display text-2xl font-semibold text-foreground">
@@ -143,5 +145,7 @@ function AuthPage() {
         </button>
       </div>
     </main>
+    <SiteFooter />
+    </div>
   );
 }

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { CalendarDays, CheckCircle2, Home, Layers, Plus, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { ALL_BRANDS, BrandProvider, useBrand } from "@/hooks/useBrand";
+import { SiteFooter } from "@/components/app/SiteFooter";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
@@ -40,6 +41,7 @@ function AuthenticatedLayout() {
         <main className="relative mx-auto w-full max-w-2xl px-4 pt-4">
           <Outlet />
         </main>
+        <SiteFooter className="mt-6 pb-[1rem]" />
         <BottomNav />
       </div>
     </BrandProvider>

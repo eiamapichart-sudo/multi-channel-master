@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { prdMeta, sections } from "@/content/prd";
 import { PrdSection } from "@/components/prd/PrdSection";
 import { PrdSidebar } from "@/components/prd/PrdSidebar";
+import { SiteFooter } from "@/components/app/SiteFooter";
 
 const description =
   "PRD ระบบโพสต์ครั้งเดียวไปทุกช่องทางโซเชียล: Facebook, Instagram, TikTok, YouTube, LINE OA พร้อมตั้งเวลาล่วงหน้า ระบบอนุมัติ หลายแบรนด์ และแนวทางเชื่อมต่อ ERP";
@@ -95,6 +96,7 @@ function PrdPage() {
           </footer>
         </article>
       </main>
+      <SiteFooter className="no-print" />
     </div>
   );
 }
