@@ -360,8 +360,15 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       continue;
     }
 
+    const isTikTok = target.platform === "tiktok";
+
     try {
-      assertFacebookConfigured();
+      if (isTikTok) {
+        const { assertTikTokConfigured } = await import("@/lib/tiktok.server");
+        assertTikTokConfigured();
+      } else {
+        assertFacebookConfigured();
+      }
 
       const { data: account, error: accountError } = await db
         .from("channel_accounts")
@@ -373,39 +380,42 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         throw new Error(
           target.platform === "instagram"
             ? "บัญชี Instagram นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ Facebook ในหน้าตั้งค่าก่อน"
-            : "เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน",
+            : isTikTok
+              ? "บัญชี TikTok นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ TikTok ในหน้าตั้งค่าก่อน"
+              : "เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน",
         );
       }
 
-      const { data: credential, error: credentialError } = await db
+      const { data: credentialRow, error: credentialError } = await db
         .from("channel_credentials")
-        .select("access_token, token_expires_at")
+        .select("access_token, token_expires_at, refresh_token, refresh_expires_at, scopes, meta")
         .eq("channel_account_id", target.channel_account_id)
         .maybeSingle();
       if (credentialError) throw new Error(credentialError.message);
+      const credential = credentialRow as CredentialRow | null;
       if (!credential?.access_token) {
         throw new Error("ไม่พบสิทธิ์เข้าถึงบัญชี — กดเชื่อมต่อใหม่ในหน้าตั้งค่า");
       }
-      if (credential.token_expires_at && new Date(credential.token_expires_at) < new Date()) {
+      // TikTok ต่ออายุเองได้ ส่วน Meta ต้องให้ผู้ใช้กดเชื่อมใหม่
+      if (
+        !isTikTok &&
+        credential.token_expires_at &&
+        new Date(credential.token_expires_at) < new Date()
+      ) {
         throw new Error("สิทธิ์เข้าถึงบัญชีหมดอายุ — กดเชื่อมต่อใหม่ในหน้าตั้งค่า");
       }
 
+      const accessToken = isTikTok
+        ? await ensureTikTokToken(target.channel_account_id, credential)
+        : credential.access_token;
+
       const message = (target.override_body ?? post.body ?? "").trim();
-      const result =
-        target.platform === "instagram"
-          ? await publishToInstagram(
-              target,
-              account.external_id,
-              credential.access_token,
-              message,
-              mediaPaths,
-            )
-          : await publishToFacebook(
-              account.external_id,
-              credential.access_token,
-              message,
-              mediaPaths,
-            );
+      const result = isTikTok
+        ? await publishToTikTok(target, accessToken, message, mediaPaths, credential)
+        : target.platform === "instagram"
+          ? await publishToInstagram(target, account.external_id, accessToken, message, mediaPaths)
+          : await publishToFacebook(account.external_id, accessToken, message, mediaPaths);
+
 
       const saved = await updateWithRetry("post_targets", target.id, {
         status: "published",
