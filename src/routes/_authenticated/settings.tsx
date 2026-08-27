@@ -176,7 +176,9 @@ function SettingsPage() {
       <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-foreground">เชื่อมต่อช่องทางจริง</h2>
         <FacebookConnectCard brandId={targetBrand} />
+        <TikTokConnectCard brandId={targetBrand} />
       </section>
+
 
       <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-foreground">
