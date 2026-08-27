@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as PrdRouteImport } from './routes/prd'
-import { Route as _dotprobeTestRouteImport } from './routes/__dotprobe.test'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authenticated/approvals'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
@@ -39,11 +38,6 @@ const AuthRoute = AuthRouteImport.update({
 const PrdRoute = PrdRouteImport.update({
   id: '/prd',
   path: '/prd',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const _dotprobeTestRoute = _dotprobeTestRouteImport.update({
-  id: '/__dotprobe/test',
-  path: '/test',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -117,7 +111,6 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
   '/prd': typeof PrdRoute
-  '/test': typeof _dotprobeTestRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/compose': typeof AuthenticatedComposeRoute
@@ -134,7 +127,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/prd': typeof PrdRoute
-  '/test': typeof _dotprobeTestRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/compose': typeof AuthenticatedComposeRoute
@@ -154,7 +146,6 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/prd': typeof PrdRoute
-  '/__dotprobe/test': typeof _dotprobeTestRoute
   '/_authenticated/approvals': typeof AuthenticatedApprovalsRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/compose': typeof AuthenticatedComposeRoute
@@ -175,7 +166,6 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/prd'
-    | '/test'
     | '/approvals'
     | '/calendar'
     | '/compose'
@@ -192,7 +182,6 @@ export interface FileRouteTypes {
   to:
     | '/auth'
     | '/prd'
-    | '/test'
     | '/approvals'
     | '/calendar'
     | '/compose'
@@ -211,7 +200,6 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/prd'
-    | '/__dotprobe/test'
     | '/_authenticated/approvals'
     | '/_authenticated/calendar'
     | '/_authenticated/compose'
@@ -231,7 +219,6 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   PrdRoute: typeof PrdRoute
-  _dotprobeTestRoute: typeof _dotprobeTestRoute
   ApiPublishCronRoute: typeof ApiPublishCronRoute
   ApiPublishNowRoute: typeof ApiPublishNowRoute
   ApiOauthFacebookCallbackRoute: typeof ApiOauthFacebookCallbackRoute
@@ -263,13 +250,6 @@ declare module '@tanstack/react-router' {
       path: '/prd'
       fullPath: '/prd'
       preLoaderRoute: typeof PrdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/__dotprobe/test': {
-      id: '/__dotprobe/test'
-      path: '/test'
-      fullPath: '/test'
-      preLoaderRoute: typeof _dotprobeTestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/': {
@@ -389,7 +369,6 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   PrdRoute: PrdRoute,
-  _dotprobeTestRoute: _dotprobeTestRoute,
   ApiPublishCronRoute: ApiPublishCronRoute,
   ApiPublishNowRoute: ApiPublishNowRoute,
   ApiOauthFacebookCallbackRoute: ApiOauthFacebookCallbackRoute,
