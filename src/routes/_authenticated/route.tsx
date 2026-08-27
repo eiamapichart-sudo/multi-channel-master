@@ -41,6 +41,7 @@ function AuthenticatedLayout() {
         <main className="relative mx-auto w-full max-w-2xl px-4 pt-4">
           <Outlet />
         </main>
+        <SiteFooter className="mt-6 pb-[1rem]" />
         <BottomNav />
       </div>
     </BrandProvider>
