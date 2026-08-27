@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { CalendarDays, CheckCircle2, Home, Layers, Plus, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { ALL_BRANDS, BrandProvider, useBrand } from "@/hooks/useBrand";
+import { SiteFooter } from "@/components/app/SiteFooter";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
