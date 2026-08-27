@@ -24,8 +24,11 @@ const SIGNED_URL_TTL = 60 * 30;
 const BATCH_SIZE = 10;
 /** จำนวนครั้งที่ยอมให้ลองใหม่ต่อหนึ่งปลายทางก่อนหยุด */
 export const MAX_ATTEMPTS = 3;
+/** ช่องทางที่ระบบส่งขึ้นได้จริงแล้ว */
+const LIVE_PLATFORMS = ["facebook", "instagram", "tiktok"];
 
 const isVideoPath = (path: string) => /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(path.split("?")[0] ?? "");
+
 
 type TargetRow = {
   id: string;
