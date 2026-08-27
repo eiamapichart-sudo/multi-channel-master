@@ -318,7 +318,7 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       continue;
     }
 
-    if (!["facebook", "instagram"].includes(target.platform) || !target.channel_account_id) {
+    if (!LIVE_PLATFORMS.includes(target.platform) || !target.channel_account_id) {
       summary.skipped += 1;
       continue;
     }
@@ -334,13 +334,16 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         external_url:
           target.platform === "instagram"
             ? instagramPermalinkFallback(target.external_id)
-            : permalinkFromPostId(target.external_id),
+            : target.platform === "tiktok"
+              ? `https://www.tiktok.com/video/${target.external_id}`
+              : permalinkFromPostId(target.external_id),
         error_message: null,
         published_at: new Date().toISOString(),
       });
       summary.published += 1;
       continue;
     }
+
 
     const { data: claimed } = await db
       .from("post_targets")
