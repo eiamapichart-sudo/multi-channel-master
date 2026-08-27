@@ -285,7 +285,7 @@ export async function publishPhotoPost(
   }
 
   const body: Record<string, string | number | boolean> = {};
-  if (message) body.message = message;
+  if (message) body["message"] = message;
   mediaIds.forEach((id, i) => {
     body[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id });
   });
