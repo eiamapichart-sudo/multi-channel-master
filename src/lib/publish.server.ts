@@ -416,7 +416,6 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
           ? await publishToInstagram(target, account.external_id, accessToken, message, mediaPaths)
           : await publishToFacebook(account.external_id, accessToken, message, mediaPaths);
 
-
       const saved = await updateWithRetry("post_targets", target.id, {
         status: "published",
         external_id: result.postId,
@@ -479,7 +478,7 @@ async function syncPostStatus(postId: string) {
   const anyFailed = rows.some((r) => r.status === "failed");
   const anyRetryable = rows.some(
     (r) =>
-      ["facebook", "instagram"].includes(r.platform) &&
+      LIVE_PLATFORMS.includes(r.platform) &&
       r.channel_account_id &&
       ["queued", "publishing"].includes(r.status) &&
       r.attempt_count < MAX_ATTEMPTS,
@@ -518,7 +517,7 @@ export async function runDuePosts(): Promise<PublishSummary[]> {
   const { data: dueTargets, error } = await db
     .from("post_targets")
     .select("post_id, posts!inner(id, status, scheduled_at)")
-    .in("platform", ["facebook", "instagram"])
+    .in("platform", LIVE_PLATFORMS)
     .not("channel_account_id", "is", null)
     .in("status", ["queued", "failed"])
     .lt("attempt_count", MAX_ATTEMPTS)
