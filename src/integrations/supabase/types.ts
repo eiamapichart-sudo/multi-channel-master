@@ -79,28 +79,40 @@ export type Database = {
       channel_accounts: {
         Row: {
           account_name: string
+          avatar_url: string | null
           brand_id: string
           connected: boolean
+          connected_at: string | null
           created_at: string
+          external_id: string | null
           id: string
+          last_error: string | null
           platform: Database["public"]["Enums"]["platform"]
           updated_at: string
         }
         Insert: {
           account_name: string
+          avatar_url?: string | null
           brand_id: string
           connected?: boolean
+          connected_at?: string | null
           created_at?: string
+          external_id?: string | null
           id?: string
+          last_error?: string | null
           platform: Database["public"]["Enums"]["platform"]
           updated_at?: string
         }
         Update: {
           account_name?: string
+          avatar_url?: string | null
           brand_id?: string
           connected?: boolean
+          connected_at?: string | null
           created_at?: string
+          external_id?: string | null
           id?: string
+          last_error?: string | null
           platform?: Database["public"]["Enums"]["platform"]
           updated_at?: string
         }
@@ -114,40 +126,146 @@ export type Database = {
           },
         ]
       }
+      channel_credentials: {
+        Row: {
+          access_token: string
+          channel_account_id: string
+          connected_by: string | null
+          external_id: string | null
+          platform: Database["public"]["Enums"]["platform"]
+          scopes: string[]
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          channel_account_id: string
+          connected_by?: string | null
+          external_id?: string | null
+          platform: Database["public"]["Enums"]["platform"]
+          scopes?: string[]
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          channel_account_id?: string
+          connected_by?: string | null
+          external_id?: string | null
+          platform?: Database["public"]["Enums"]["platform"]
+          scopes?: string[]
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_credentials_channel_account_id_fkey"
+            columns: ["channel_account_id"]
+            isOneToOne: true
+            referencedRelation: "channel_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oauth_sessions: {
+        Row: {
+          accounts: Json | null
+          brand_id: string
+          created_at: string
+          error_message: string | null
+          expires_at: string
+          platform: Database["public"]["Enums"]["platform"]
+          state: string
+          status: string
+          token_expires_at: string | null
+          user_access_token: string | null
+          user_id: string
+        }
+        Insert: {
+          accounts?: Json | null
+          brand_id: string
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string
+          platform: Database["public"]["Enums"]["platform"]
+          state: string
+          status?: string
+          token_expires_at?: string | null
+          user_access_token?: string | null
+          user_id: string
+        }
+        Update: {
+          accounts?: Json | null
+          brand_id?: string
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string
+          platform?: Database["public"]["Enums"]["platform"]
+          state?: string
+          status?: string
+          token_expires_at?: string | null
+          user_access_token?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oauth_sessions_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_targets: {
         Row: {
+          attempt_count: number
           channel_account_id: string | null
           created_at: string
           error_message: string | null
+          external_id: string | null
           external_url: string | null
           id: string
+          last_attempt_at: string | null
           override_body: string | null
+          pending_external_id: string | null
           platform: Database["public"]["Enums"]["platform"]
           post_id: string
+          published_at: string | null
           status: Database["public"]["Enums"]["target_status"]
           updated_at: string
         }
         Insert: {
+          attempt_count?: number
           channel_account_id?: string | null
           created_at?: string
           error_message?: string | null
+          external_id?: string | null
           external_url?: string | null
           id?: string
+          last_attempt_at?: string | null
           override_body?: string | null
+          pending_external_id?: string | null
           platform: Database["public"]["Enums"]["platform"]
           post_id: string
+          published_at?: string | null
           status?: Database["public"]["Enums"]["target_status"]
           updated_at?: string
         }
         Update: {
+          attempt_count?: number
           channel_account_id?: string | null
           created_at?: string
           error_message?: string | null
+          external_id?: string | null
           external_url?: string | null
           id?: string
+          last_attempt_at?: string | null
           override_body?: string | null
+          pending_external_id?: string | null
           platform?: Database["public"]["Enums"]["platform"]
           post_id?: string
+          published_at?: string | null
           status?: Database["public"]["Enums"]["target_status"]
           updated_at?: string
         }
@@ -180,6 +298,7 @@ export type Database = {
           media_url: string | null
           media_urls: string[]
           published_at: string | null
+          publishing_started_at: string | null
           scheduled_at: string | null
           status: Database["public"]["Enums"]["post_status"]
           title: string | null
@@ -196,6 +315,7 @@ export type Database = {
           media_url?: string | null
           media_urls?: string[]
           published_at?: string | null
+          publishing_started_at?: string | null
           scheduled_at?: string | null
           status?: Database["public"]["Enums"]["post_status"]
           title?: string | null
@@ -212,6 +332,7 @@ export type Database = {
           media_url?: string | null
           media_urls?: string[]
           published_at?: string | null
+          publishing_started_at?: string | null
           scheduled_at?: string | null
           status?: Database["public"]["Enums"]["post_status"]
           title?: string | null
@@ -274,7 +395,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      can_manage_brand: { Args: { _brand_id: string }; Returns: boolean }
+      purge_expired_oauth_sessions: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "approver" | "editor"

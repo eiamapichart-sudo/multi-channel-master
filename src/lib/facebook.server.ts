@@ -51,9 +51,11 @@ function appSecretProof(accessToken: string): string | null {
   return createHmac("sha256", secret).update(accessToken).digest("hex");
 }
 
-async function parseOrThrow(res: Response, context: string) {
+// คืน any เพราะโครงตอบกลับของ Graph API หลากหลายมาก — noPropertyAccessFromIndexSignature
+// จะบังคับให้เขียน json['data'] ทุกจุดถ้าประกาศเป็น Record<string, any>
+async function parseOrThrow(res: Response, context: string): Promise<any> {
   const text = await res.text();
-  let json: Record<string, any> = {};
+  let json: any = {};
   try {
     json = text ? JSON.parse(text) : {};
   } catch {
@@ -283,7 +285,7 @@ export async function publishPhotoPost(
   }
 
   const body: Record<string, string | number | boolean> = {};
-  if (message) body.message = message;
+  if (message) body["message"] = message;
   mediaIds.forEach((id, i) => {
     body[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id });
   });

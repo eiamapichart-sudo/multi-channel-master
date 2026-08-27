@@ -17,6 +17,12 @@ import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedComposeRouteImport } from './routes/_authenticated/compose'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as ApiPublishCronRouteImport } from './routes/api/publish/cron'
+import { Route as ApiPublishNowRouteImport } from './routes/api/publish/now'
+import { Route as ApiOauthFacebookCallbackRouteImport } from './routes/api/oauth/facebook/callback'
+import { Route as ApiOauthFacebookConnectRouteImport } from './routes/api/oauth/facebook/connect'
+import { Route as ApiOauthFacebookPagesRouteImport } from './routes/api/oauth/facebook/pages'
+import { Route as ApiOauthFacebookStartRouteImport } from './routes/api/oauth/facebook/start'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -57,6 +63,37 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublishCronRoute = ApiPublishCronRouteImport.update({
+  id: '/api/publish/cron',
+  path: '/api/publish/cron',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublishNowRoute = ApiPublishNowRouteImport.update({
+  id: '/api/publish/now',
+  path: '/api/publish/now',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthFacebookCallbackRoute =
+  ApiOauthFacebookCallbackRouteImport.update({
+    id: '/api/oauth/facebook/callback',
+    path: '/api/oauth/facebook/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiOauthFacebookConnectRoute = ApiOauthFacebookConnectRouteImport.update({
+  id: '/api/oauth/facebook/connect',
+  path: '/api/oauth/facebook/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthFacebookPagesRoute = ApiOauthFacebookPagesRouteImport.update({
+  id: '/api/oauth/facebook/pages',
+  path: '/api/oauth/facebook/pages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthFacebookStartRoute = ApiOauthFacebookStartRouteImport.update({
+  id: '/api/oauth/facebook/start',
+  path: '/api/oauth/facebook/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -66,6 +103,12 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof AuthenticatedCalendarRoute
   '/compose': typeof AuthenticatedComposeRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/publish/cron': typeof ApiPublishCronRoute
+  '/api/publish/now': typeof ApiPublishNowRoute
+  '/api/oauth/facebook/callback': typeof ApiOauthFacebookCallbackRoute
+  '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
+  '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
+  '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -75,6 +118,12 @@ export interface FileRoutesByTo {
   '/compose': typeof AuthenticatedComposeRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/api/publish/cron': typeof ApiPublishCronRoute
+  '/api/publish/now': typeof ApiPublishNowRoute
+  '/api/oauth/facebook/callback': typeof ApiOauthFacebookCallbackRoute
+  '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
+  '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
+  '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,6 +135,12 @@ export interface FileRoutesById {
   '/_authenticated/compose': typeof AuthenticatedComposeRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/api/publish/cron': typeof ApiPublishCronRoute
+  '/api/publish/now': typeof ApiPublishNowRoute
+  '/api/oauth/facebook/callback': typeof ApiOauthFacebookCallbackRoute
+  '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
+  '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
+  '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -97,6 +152,12 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/compose'
     | '/settings'
+    | '/api/publish/cron'
+    | '/api/publish/now'
+    | '/api/oauth/facebook/callback'
+    | '/api/oauth/facebook/connect'
+    | '/api/oauth/facebook/pages'
+    | '/api/oauth/facebook/start'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -106,6 +167,12 @@ export interface FileRouteTypes {
     | '/compose'
     | '/settings'
     | '/'
+    | '/api/publish/cron'
+    | '/api/publish/now'
+    | '/api/oauth/facebook/callback'
+    | '/api/oauth/facebook/connect'
+    | '/api/oauth/facebook/pages'
+    | '/api/oauth/facebook/start'
   id:
     | '__root__'
     | '/_authenticated'
@@ -116,12 +183,24 @@ export interface FileRouteTypes {
     | '/_authenticated/compose'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/api/publish/cron'
+    | '/api/publish/now'
+    | '/api/oauth/facebook/callback'
+    | '/api/oauth/facebook/connect'
+    | '/api/oauth/facebook/pages'
+    | '/api/oauth/facebook/start'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   PrdRoute: typeof PrdRoute
+  ApiPublishCronRoute: typeof ApiPublishCronRoute
+  ApiPublishNowRoute: typeof ApiPublishNowRoute
+  ApiOauthFacebookCallbackRoute: typeof ApiOauthFacebookCallbackRoute
+  ApiOauthFacebookConnectRoute: typeof ApiOauthFacebookConnectRoute
+  ApiOauthFacebookPagesRoute: typeof ApiOauthFacebookPagesRoute
+  ApiOauthFacebookStartRoute: typeof ApiOauthFacebookStartRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -182,6 +261,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/publish/cron': {
+      id: '/api/publish/cron'
+      path: '/api/publish/cron'
+      fullPath: '/api/publish/cron'
+      preLoaderRoute: typeof ApiPublishCronRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/publish/now': {
+      id: '/api/publish/now'
+      path: '/api/publish/now'
+      fullPath: '/api/publish/now'
+      preLoaderRoute: typeof ApiPublishNowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/facebook/callback': {
+      id: '/api/oauth/facebook/callback'
+      path: '/api/oauth/facebook/callback'
+      fullPath: '/api/oauth/facebook/callback'
+      preLoaderRoute: typeof ApiOauthFacebookCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/facebook/connect': {
+      id: '/api/oauth/facebook/connect'
+      path: '/api/oauth/facebook/connect'
+      fullPath: '/api/oauth/facebook/connect'
+      preLoaderRoute: typeof ApiOauthFacebookConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/facebook/pages': {
+      id: '/api/oauth/facebook/pages'
+      path: '/api/oauth/facebook/pages'
+      fullPath: '/api/oauth/facebook/pages'
+      preLoaderRoute: typeof ApiOauthFacebookPagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/facebook/start': {
+      id: '/api/oauth/facebook/start'
+      path: '/api/oauth/facebook/start'
+      fullPath: '/api/oauth/facebook/start'
+      preLoaderRoute: typeof ApiOauthFacebookStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -208,6 +329,12 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   PrdRoute: PrdRoute,
+  ApiPublishCronRoute: ApiPublishCronRoute,
+  ApiPublishNowRoute: ApiPublishNowRoute,
+  ApiOauthFacebookCallbackRoute: ApiOauthFacebookCallbackRoute,
+  ApiOauthFacebookConnectRoute: ApiOauthFacebookConnectRoute,
+  ApiOauthFacebookPagesRoute: ApiOauthFacebookPagesRoute,
+  ApiOauthFacebookStartRoute: ApiOauthFacebookStartRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

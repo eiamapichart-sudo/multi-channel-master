@@ -12,6 +12,7 @@ type PickerPage = {
   category: string | null;
   avatarUrl: string | null;
   canCreateContent: boolean;
+  instagram: { id: string; username: string; avatarUrl: string | null } | null;
 };
 
 type ConnectedPage = {
@@ -204,7 +205,11 @@ export function FacebookConnectCard({ brandId }: { brandId: string | null }) {
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm text-foreground">{page.name}</span>
-                        {page.category ? (
+                        {page.instagram ? (
+                          <span className="block truncate text-[11px] font-medium text-accent">
+                            IG: @{page.instagram.username} — จะเชื่อมต่อ Instagram ให้ด้วย
+                          </span>
+                        ) : page.category ? (
                           <span className="block truncate text-[11px] text-muted-foreground">
                             {page.category}
                           </span>
