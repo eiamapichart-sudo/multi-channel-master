@@ -146,6 +146,142 @@ async function publishToInstagram(
   });
 }
 
+type CredentialRow = {
+  access_token: string;
+  token_expires_at: string | null;
+  refresh_token: string | null;
+  refresh_expires_at: string | null;
+  scopes: string[] | null;
+  meta: Record<string, unknown> | null;
+};
+
+/**
+ * ต่ออายุสิทธิ์ TikTok ให้เอง — access token ของ TikTok อายุแค่ ~24 ชม.
+ * ถ้าเหลือน้อยกว่า 10 นาที (หรือหมดแล้ว) จะใช้ refresh token ขอใหม่และบันทึกทับ
+ */
+async function ensureTikTokToken(
+  channelAccountId: string,
+  credential: CredentialRow,
+): Promise<string> {
+  const expiresAt = credential.token_expires_at ? new Date(credential.token_expires_at) : null;
+  const fresh = !expiresAt || expiresAt.getTime() - Date.now() > 10 * 60_000;
+  if (fresh) return credential.access_token;
+
+  if (!credential.refresh_token) {
+    throw new Error("สิทธิ์ TikTok หมดอายุ และไม่มีรหัสต่ออายุ — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า");
+  }
+  if (credential.refresh_expires_at && new Date(credential.refresh_expires_at) < new Date()) {
+    throw new Error("สิทธิ์ TikTok หมดอายุแล้ว — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า");
+  }
+
+  const { refreshAccessToken } = await import("@/lib/tiktok.server");
+  const tokens = await refreshAccessToken(credential.refresh_token);
+
+  await db
+    .from("channel_credentials")
+    .update({
+      access_token: tokens.accessToken,
+      token_expires_at: tokens.expiresAt?.toISOString() ?? null,
+      refresh_token: tokens.refreshToken ?? credential.refresh_token,
+      refresh_expires_at:
+        tokens.refreshExpiresAt?.toISOString() ?? credential.refresh_expires_at ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("channel_account_id", channelAccountId);
+
+  return tokens.accessToken;
+}
+
+/**
+ * โพสต์คลิปลง TikTok หนึ่งบัญชี
+ *
+ * - TikTok รับได้ 1 คลิปต่อโพสต์ และไม่รับรูปผ่านช่องทางนี้
+ * - ถ้ารอบก่อนสร้างงานค้างไว้ (pending_external_id = publish_id) จะไปเช็คสถานะงานเดิมก่อน
+ *   เพื่อไม่ให้เกิดคลิปซ้ำบนโปรไฟล์
+ * - ถ้าแอปยังไม่ผ่าน audit ของ TikTok จะส่งเข้ากล่องร่างในแอปให้ครีเอเตอร์กดโพสต์เอง
+ */
+async function publishToTikTok(
+  target: TargetRow,
+  token: string,
+  caption: string,
+  mediaPaths: string[],
+  credential: CredentialRow,
+): Promise<PublishResult> {
+  const tt = await import("@/lib/tiktok.server");
+
+  if (mediaPaths.length === 0) throw new Error("TikTok ต้องมีคลิปวิดีโอ 1 คลิป — โพสต์ข้อความล้วนไม่ได้");
+  const videos = mediaPaths.filter(isVideoPath);
+  if (videos.length !== mediaPaths.length) throw new Error("TikTok รับได้เฉพาะไฟล์วิดีโอ");
+  if (videos.length > 1) throw new Error("TikTok โพสต์ได้ 1 คลิปต่อโพสต์ — แยกเป็นหลายโพสต์แทน");
+
+  const username = String((credential.meta as { username?: string } | null)?.username ?? "");
+
+  // งานค้างจากรอบก่อน → เช็คก่อนว่ามันขึ้นไปแล้วหรือยัง
+  if (target.pending_external_id) {
+    const state = await tt.fetchPublishStatus(token, target.pending_external_id);
+    if (state.state === "done") {
+      return { postId: state.postId, permalink: tt.tiktokPermalink(username, state.postId) };
+    }
+    if (state.state === "processing") {
+      const waited = await tt.waitForPublish(token, target.pending_external_id, 5);
+      if (waited.state === "done") {
+        return { postId: waited.postId, permalink: tt.tiktokPermalink(username, waited.postId) };
+      }
+      if (waited.state === "processing") {
+        throw new Error("TikTok ยังประมวลผลคลิปอยู่ — ระบบจะตามเก็บผลให้ในรอบถัดไป");
+      }
+    }
+    // failed → เริ่มงานใหม่ด้านล่าง
+  }
+
+  const [url] = await signMediaPaths(videos);
+  const scopes = credential.scopes ?? [];
+  const canDirectPost = scopes.includes("video.publish");
+  const privacyOptions = ((credential.meta as { privacy_options?: string[] } | null)
+    ?.privacy_options ?? []) as string[];
+  const privacyLevel = privacyOptions.includes("PUBLIC_TO_EVERYONE")
+    ? "PUBLIC_TO_EVERYONE"
+    : (privacyOptions[0] ?? "SELF_ONLY");
+
+  const remember = async (publishId: string) => {
+    // จดรหัสงานก่อนอัปโหลดจริง — ถ้าพังกลางทาง รอบหน้าจะมาต่อจากงานนี้ ไม่โพสต์ซ้ำ
+    await updateWithRetry("post_targets", target.id, { pending_external_id: publishId });
+  };
+
+  let publishId: string;
+  try {
+    ({ publishId } = await tt.publishTikTokVideo(
+      token,
+      url!,
+      { directPost: canDirectPost, title: caption, privacyLevel },
+      remember,
+    ));
+  } catch (error) {
+    // แอปยังไม่ผ่าน audit → ถอยไปใช้กล่องร่างในแอป TikTok แทน ไม่ให้โพสต์ตกหล่น
+    const unaudited =
+      error instanceof tt.TikTokError &&
+      (error.code === "unaudited_client_can_only_post_to_private_accounts" ||
+        error.code === "scope_not_authorized");
+    if (!canDirectPost || !unaudited) throw error;
+    ({ publishId } = await tt.publishTikTokVideo(
+      token,
+      url!,
+      { directPost: false, title: caption },
+      remember,
+    ));
+  }
+
+  const state = await tt.waitForPublish(token, publishId);
+  if (state.state === "failed") throw new Error(state.reason);
+  if (state.state === "processing") {
+    throw new Error("TikTok ยังประมวลผลคลิปอยู่ — ระบบจะตามเก็บผลให้ในรอบถัดไป");
+  }
+
+  return { postId: state.postId, permalink: tt.tiktokPermalink(username, state.postId) };
+}
+
+
+
 /**
  * เผยแพร่โพสต์หนึ่งโพสต์ไปทุกเพจที่เลือกไว้
  * ปลอดภัยที่จะเรียกซ้ำ — ปลายทางที่ส่งไปแล้วจะถูกข้าม
