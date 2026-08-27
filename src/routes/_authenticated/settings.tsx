@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FacebookConnectCard } from "@/components/app/FacebookConnectCard";
+import { TikTokConnectCard } from "@/components/app/TikTokConnectCard";
+
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 
 export const Route = createFileRoute("/_authenticated/settings")({
