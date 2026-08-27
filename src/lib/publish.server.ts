@@ -371,7 +371,10 @@ export async function runDuePosts(): Promise<PublishSummary[]> {
   if (!dueTargets?.length) return [];
 
   const byPost = new Map<string, string>();
-  for (const row of dueTargets as { post_id: string; posts: { scheduled_at: string } }[]) {
+  for (const row of dueTargets as unknown as {
+    post_id: string;
+    posts: { scheduled_at: string };
+  }[]) {
     if (!byPost.has(row.post_id)) byPost.set(row.post_id, row.posts?.scheduled_at ?? nowIso);
   }
   const ordered = [...byPost.entries()]
