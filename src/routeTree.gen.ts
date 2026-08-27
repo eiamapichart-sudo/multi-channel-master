@@ -23,6 +23,8 @@ import { Route as ApiOauthFacebookCallbackRouteImport } from './routes/api/oauth
 import { Route as ApiOauthFacebookConnectRouteImport } from './routes/api/oauth/facebook/connect'
 import { Route as ApiOauthFacebookPagesRouteImport } from './routes/api/oauth/facebook/pages'
 import { Route as ApiOauthFacebookStartRouteImport } from './routes/api/oauth/facebook/start'
+import { Route as ApiOauthTiktokCallbackRouteImport } from './routes/api/oauth/tiktok/callback'
+import { Route as ApiOauthTiktokStartRouteImport } from './routes/api/oauth/tiktok/start'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -94,6 +96,16 @@ const ApiOauthFacebookStartRoute = ApiOauthFacebookStartRouteImport.update({
   path: '/api/oauth/facebook/start',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOauthTiktokCallbackRoute = ApiOauthTiktokCallbackRouteImport.update({
+  id: '/api/oauth/tiktok/callback',
+  path: '/api/oauth/tiktok/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthTiktokStartRoute = ApiOauthTiktokStartRouteImport.update({
+  id: '/api/oauth/tiktok/start',
+  path: '/api/oauth/tiktok/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -109,6 +121,8 @@ export interface FileRoutesByFullPath {
   '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
   '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
   '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
+  '/api/oauth/tiktok/callback': typeof ApiOauthTiktokCallbackRoute
+  '/api/oauth/tiktok/start': typeof ApiOauthTiktokStartRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -124,6 +138,8 @@ export interface FileRoutesByTo {
   '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
   '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
   '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
+  '/api/oauth/tiktok/callback': typeof ApiOauthTiktokCallbackRoute
+  '/api/oauth/tiktok/start': typeof ApiOauthTiktokStartRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -141,6 +157,8 @@ export interface FileRoutesById {
   '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
   '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
   '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
+  '/api/oauth/tiktok/callback': typeof ApiOauthTiktokCallbackRoute
+  '/api/oauth/tiktok/start': typeof ApiOauthTiktokStartRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -158,6 +176,8 @@ export interface FileRouteTypes {
     | '/api/oauth/facebook/connect'
     | '/api/oauth/facebook/pages'
     | '/api/oauth/facebook/start'
+    | '/api/oauth/tiktok/callback'
+    | '/api/oauth/tiktok/start'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -173,6 +193,8 @@ export interface FileRouteTypes {
     | '/api/oauth/facebook/connect'
     | '/api/oauth/facebook/pages'
     | '/api/oauth/facebook/start'
+    | '/api/oauth/tiktok/callback'
+    | '/api/oauth/tiktok/start'
   id:
     | '__root__'
     | '/_authenticated'
@@ -189,6 +211,8 @@ export interface FileRouteTypes {
     | '/api/oauth/facebook/connect'
     | '/api/oauth/facebook/pages'
     | '/api/oauth/facebook/start'
+    | '/api/oauth/tiktok/callback'
+    | '/api/oauth/tiktok/start'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -201,6 +225,8 @@ export interface RootRouteChildren {
   ApiOauthFacebookConnectRoute: typeof ApiOauthFacebookConnectRoute
   ApiOauthFacebookPagesRoute: typeof ApiOauthFacebookPagesRoute
   ApiOauthFacebookStartRoute: typeof ApiOauthFacebookStartRoute
+  ApiOauthTiktokCallbackRoute: typeof ApiOauthTiktokCallbackRoute
+  ApiOauthTiktokStartRoute: typeof ApiOauthTiktokStartRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -303,6 +329,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOauthFacebookStartRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/oauth/tiktok/callback': {
+      id: '/api/oauth/tiktok/callback'
+      path: '/api/oauth/tiktok/callback'
+      fullPath: '/api/oauth/tiktok/callback'
+      preLoaderRoute: typeof ApiOauthTiktokCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/tiktok/start': {
+      id: '/api/oauth/tiktok/start'
+      path: '/api/oauth/tiktok/start'
+      fullPath: '/api/oauth/tiktok/start'
+      preLoaderRoute: typeof ApiOauthTiktokStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -335,6 +375,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOauthFacebookConnectRoute: ApiOauthFacebookConnectRoute,
   ApiOauthFacebookPagesRoute: ApiOauthFacebookPagesRoute,
   ApiOauthFacebookStartRoute: ApiOauthFacebookStartRoute,
+  ApiOauthTiktokCallbackRoute: ApiOauthTiktokCallbackRoute,
+  ApiOauthTiktokStartRoute: ApiOauthTiktokStartRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

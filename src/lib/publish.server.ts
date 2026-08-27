@@ -24,8 +24,11 @@ const SIGNED_URL_TTL = 60 * 30;
 const BATCH_SIZE = 10;
 /** จำนวนครั้งที่ยอมให้ลองใหม่ต่อหนึ่งปลายทางก่อนหยุด */
 export const MAX_ATTEMPTS = 3;
+/** ช่องทางที่ระบบส่งขึ้นได้จริงแล้ว */
+const LIVE_PLATFORMS = ["facebook", "instagram", "tiktok"];
 
 const isVideoPath = (path: string) => /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(path.split("?")[0] ?? "");
+
 
 type TargetRow = {
   id: string;
@@ -143,6 +146,142 @@ async function publishToInstagram(
   });
 }
 
+type CredentialRow = {
+  access_token: string;
+  token_expires_at: string | null;
+  refresh_token: string | null;
+  refresh_expires_at: string | null;
+  scopes: string[] | null;
+  meta: Record<string, unknown> | null;
+};
+
+/**
+ * ต่ออายุสิทธิ์ TikTok ให้เอง — access token ของ TikTok อายุแค่ ~24 ชม.
+ * ถ้าเหลือน้อยกว่า 10 นาที (หรือหมดแล้ว) จะใช้ refresh token ขอใหม่และบันทึกทับ
+ */
+async function ensureTikTokToken(
+  channelAccountId: string,
+  credential: CredentialRow,
+): Promise<string> {
+  const expiresAt = credential.token_expires_at ? new Date(credential.token_expires_at) : null;
+  const fresh = !expiresAt || expiresAt.getTime() - Date.now() > 10 * 60_000;
+  if (fresh) return credential.access_token;
+
+  if (!credential.refresh_token) {
+    throw new Error("สิทธิ์ TikTok หมดอายุ และไม่มีรหัสต่ออายุ — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า");
+  }
+  if (credential.refresh_expires_at && new Date(credential.refresh_expires_at) < new Date()) {
+    throw new Error("สิทธิ์ TikTok หมดอายุแล้ว — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า");
+  }
+
+  const { refreshAccessToken } = await import("@/lib/tiktok.server");
+  const tokens = await refreshAccessToken(credential.refresh_token);
+
+  await db
+    .from("channel_credentials")
+    .update({
+      access_token: tokens.accessToken,
+      token_expires_at: tokens.expiresAt?.toISOString() ?? null,
+      refresh_token: tokens.refreshToken ?? credential.refresh_token,
+      refresh_expires_at:
+        tokens.refreshExpiresAt?.toISOString() ?? credential.refresh_expires_at ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("channel_account_id", channelAccountId);
+
+  return tokens.accessToken;
+}
+
+/**
+ * โพสต์คลิปลง TikTok หนึ่งบัญชี
+ *
+ * - TikTok รับได้ 1 คลิปต่อโพสต์ และไม่รับรูปผ่านช่องทางนี้
+ * - ถ้ารอบก่อนสร้างงานค้างไว้ (pending_external_id = publish_id) จะไปเช็คสถานะงานเดิมก่อน
+ *   เพื่อไม่ให้เกิดคลิปซ้ำบนโปรไฟล์
+ * - ถ้าแอปยังไม่ผ่าน audit ของ TikTok จะส่งเข้ากล่องร่างในแอปให้ครีเอเตอร์กดโพสต์เอง
+ */
+async function publishToTikTok(
+  target: TargetRow,
+  token: string,
+  caption: string,
+  mediaPaths: string[],
+  credential: CredentialRow,
+): Promise<PublishResult> {
+  const tt = await import("@/lib/tiktok.server");
+
+  if (mediaPaths.length === 0) throw new Error("TikTok ต้องมีคลิปวิดีโอ 1 คลิป — โพสต์ข้อความล้วนไม่ได้");
+  const videos = mediaPaths.filter(isVideoPath);
+  if (videos.length !== mediaPaths.length) throw new Error("TikTok รับได้เฉพาะไฟล์วิดีโอ");
+  if (videos.length > 1) throw new Error("TikTok โพสต์ได้ 1 คลิปต่อโพสต์ — แยกเป็นหลายโพสต์แทน");
+
+  const username = String((credential.meta as { username?: string } | null)?.username ?? "");
+
+  // งานค้างจากรอบก่อน → เช็คก่อนว่ามันขึ้นไปแล้วหรือยัง
+  if (target.pending_external_id) {
+    const state = await tt.fetchPublishStatus(token, target.pending_external_id);
+    if (state.state === "done") {
+      return { postId: state.postId, permalink: tt.tiktokPermalink(username, state.postId) };
+    }
+    if (state.state === "processing") {
+      const waited = await tt.waitForPublish(token, target.pending_external_id, 5);
+      if (waited.state === "done") {
+        return { postId: waited.postId, permalink: tt.tiktokPermalink(username, waited.postId) };
+      }
+      if (waited.state === "processing") {
+        throw new Error("TikTok ยังประมวลผลคลิปอยู่ — ระบบจะตามเก็บผลให้ในรอบถัดไป");
+      }
+    }
+    // failed → เริ่มงานใหม่ด้านล่าง
+  }
+
+  const [url] = await signMediaPaths(videos);
+  const scopes = credential.scopes ?? [];
+  const canDirectPost = scopes.includes("video.publish");
+  const privacyOptions = ((credential.meta as { privacy_options?: string[] } | null)
+    ?.privacy_options ?? []) as string[];
+  const privacyLevel = privacyOptions.includes("PUBLIC_TO_EVERYONE")
+    ? "PUBLIC_TO_EVERYONE"
+    : (privacyOptions[0] ?? "SELF_ONLY");
+
+  const remember = async (publishId: string) => {
+    // จดรหัสงานก่อนอัปโหลดจริง — ถ้าพังกลางทาง รอบหน้าจะมาต่อจากงานนี้ ไม่โพสต์ซ้ำ
+    await updateWithRetry("post_targets", target.id, { pending_external_id: publishId });
+  };
+
+  let publishId: string;
+  try {
+    ({ publishId } = await tt.publishTikTokVideo(
+      token,
+      url!,
+      { directPost: canDirectPost, title: caption, privacyLevel },
+      remember,
+    ));
+  } catch (error) {
+    // แอปยังไม่ผ่าน audit → ถอยไปใช้กล่องร่างในแอป TikTok แทน ไม่ให้โพสต์ตกหล่น
+    const unaudited =
+      error instanceof tt.TikTokError &&
+      (error.code === "unaudited_client_can_only_post_to_private_accounts" ||
+        error.code === "scope_not_authorized");
+    if (!canDirectPost || !unaudited) throw error;
+    ({ publishId } = await tt.publishTikTokVideo(
+      token,
+      url!,
+      { directPost: false, title: caption },
+      remember,
+    ));
+  }
+
+  const state = await tt.waitForPublish(token, publishId);
+  if (state.state === "failed") throw new Error(state.reason);
+  if (state.state === "processing") {
+    throw new Error("TikTok ยังประมวลผลคลิปอยู่ — ระบบจะตามเก็บผลให้ในรอบถัดไป");
+  }
+
+  return { postId: state.postId, permalink: tt.tiktokPermalink(username, state.postId) };
+}
+
+
+
 /**
  * เผยแพร่โพสต์หนึ่งโพสต์ไปทุกเพจที่เลือกไว้
  * ปลอดภัยที่จะเรียกซ้ำ — ปลายทางที่ส่งไปแล้วจะถูกข้าม
@@ -179,7 +318,7 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       continue;
     }
 
-    if (!["facebook", "instagram"].includes(target.platform) || !target.channel_account_id) {
+    if (!LIVE_PLATFORMS.includes(target.platform) || !target.channel_account_id) {
       summary.skipped += 1;
       continue;
     }
@@ -195,13 +334,16 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         external_url:
           target.platform === "instagram"
             ? instagramPermalinkFallback(target.external_id)
-            : permalinkFromPostId(target.external_id),
+            : target.platform === "tiktok"
+              ? `https://www.tiktok.com/video/${target.external_id}`
+              : permalinkFromPostId(target.external_id),
         error_message: null,
         published_at: new Date().toISOString(),
       });
       summary.published += 1;
       continue;
     }
+
 
     const { data: claimed } = await db
       .from("post_targets")
@@ -218,8 +360,15 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       continue;
     }
 
+    const isTikTok = target.platform === "tiktok";
+
     try {
-      assertFacebookConfigured();
+      if (isTikTok) {
+        const { assertTikTokConfigured } = await import("@/lib/tiktok.server");
+        assertTikTokConfigured();
+      } else {
+        assertFacebookConfigured();
+      }
 
       const { data: account, error: accountError } = await db
         .from("channel_accounts")
@@ -231,39 +380,41 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         throw new Error(
           target.platform === "instagram"
             ? "บัญชี Instagram นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ Facebook ในหน้าตั้งค่าก่อน"
-            : "เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน",
+            : isTikTok
+              ? "บัญชี TikTok นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ TikTok ในหน้าตั้งค่าก่อน"
+              : "เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน",
         );
       }
 
-      const { data: credential, error: credentialError } = await db
+      const { data: credentialRow, error: credentialError } = await db
         .from("channel_credentials")
-        .select("access_token, token_expires_at")
+        .select("access_token, token_expires_at, refresh_token, refresh_expires_at, scopes, meta")
         .eq("channel_account_id", target.channel_account_id)
         .maybeSingle();
       if (credentialError) throw new Error(credentialError.message);
+      const credential = credentialRow as CredentialRow | null;
       if (!credential?.access_token) {
         throw new Error("ไม่พบสิทธิ์เข้าถึงบัญชี — กดเชื่อมต่อใหม่ในหน้าตั้งค่า");
       }
-      if (credential.token_expires_at && new Date(credential.token_expires_at) < new Date()) {
+      // TikTok ต่ออายุเองได้ ส่วน Meta ต้องให้ผู้ใช้กดเชื่อมใหม่
+      if (
+        !isTikTok &&
+        credential.token_expires_at &&
+        new Date(credential.token_expires_at) < new Date()
+      ) {
         throw new Error("สิทธิ์เข้าถึงบัญชีหมดอายุ — กดเชื่อมต่อใหม่ในหน้าตั้งค่า");
       }
 
+      const accessToken = isTikTok
+        ? await ensureTikTokToken(target.channel_account_id, credential)
+        : credential.access_token;
+
       const message = (target.override_body ?? post.body ?? "").trim();
-      const result =
-        target.platform === "instagram"
-          ? await publishToInstagram(
-              target,
-              account.external_id,
-              credential.access_token,
-              message,
-              mediaPaths,
-            )
-          : await publishToFacebook(
-              account.external_id,
-              credential.access_token,
-              message,
-              mediaPaths,
-            );
+      const result = isTikTok
+        ? await publishToTikTok(target, accessToken, message, mediaPaths, credential)
+        : target.platform === "instagram"
+          ? await publishToInstagram(target, account.external_id, accessToken, message, mediaPaths)
+          : await publishToFacebook(account.external_id, accessToken, message, mediaPaths);
 
       const saved = await updateWithRetry("post_targets", target.id, {
         status: "published",
@@ -289,9 +440,16 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
         .eq("id", target.channel_account_id);
       summary.published += 1;
     } catch (error) {
-      const message = humanizeFacebookError(error);
+      let message: string;
+      if (isTikTok) {
+        const { humanizeTikTokError } = await import("@/lib/tiktok.server");
+        message = humanizeTikTokError(error);
+      } else {
+        message = humanizeFacebookError(error);
+      }
       summary.failed += 1;
       summary.errors.push(message);
+
 
       await updateWithRetry("post_targets", target.id, { status: "failed", error_message: message });
 
@@ -320,7 +478,7 @@ async function syncPostStatus(postId: string) {
   const anyFailed = rows.some((r) => r.status === "failed");
   const anyRetryable = rows.some(
     (r) =>
-      ["facebook", "instagram"].includes(r.platform) &&
+      LIVE_PLATFORMS.includes(r.platform) &&
       r.channel_account_id &&
       ["queued", "publishing"].includes(r.status) &&
       r.attempt_count < MAX_ATTEMPTS,
@@ -359,7 +517,7 @@ export async function runDuePosts(): Promise<PublishSummary[]> {
   const { data: dueTargets, error } = await db
     .from("post_targets")
     .select("post_id, posts!inner(id, status, scheduled_at)")
-    .in("platform", ["facebook", "instagram"])
+    .in("platform", LIVE_PLATFORMS)
     .not("channel_account_id", "is", null)
     .in("status", ["queued", "failed"])
     .lt("attempt_count", MAX_ATTEMPTS)

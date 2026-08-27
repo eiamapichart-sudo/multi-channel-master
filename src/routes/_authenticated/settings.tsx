@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FacebookConnectCard } from "@/components/app/FacebookConnectCard";
+import { TikTokConnectCard } from "@/components/app/TikTokConnectCard";
+
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -176,7 +178,9 @@ function SettingsPage() {
       <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-foreground">เชื่อมต่อช่องทางจริง</h2>
         <FacebookConnectCard brandId={targetBrand} />
+        <TikTokConnectCard brandId={targetBrand} />
       </section>
+
 
       <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-foreground">
