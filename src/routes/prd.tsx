@@ -96,6 +96,7 @@ function PrdPage() {
           </footer>
         </article>
       </main>
+      <SiteFooter className="no-print" />
     </div>
   );
 }
