@@ -27,8 +27,8 @@ export const MAX_ATTEMPTS = 3;
 /** ช่องทางที่ระบบส่งขึ้นได้จริงแล้ว */
 const LIVE_PLATFORMS = ["facebook", "instagram", "tiktok"];
 
-const isVideoPath = (path: string) => /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(path.split("?")[0] ?? "");
-
+const isVideoPath = (path: string) =>
+  /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(path.split("?")[0] ?? "");
 
 type TargetRow = {
   id: string;
@@ -40,6 +40,8 @@ type TargetRow = {
   external_id: string | null;
   /** Instagram: รหัส container ที่สร้างค้างไว้ ใช้ต่อยอดตอนลองใหม่ กันโพสต์ซ้ำ */
   pending_external_id: string | null;
+  /** TikTok: ตัวเลือกที่ผู้ใช้เลือกเองตอนสร้างโพสต์ (ความเป็นส่วนตัว ฯลฯ) */
+  tiktok_options?: unknown;
 };
 
 export type PublishSummary = {
@@ -69,7 +71,9 @@ async function updateWithRetry(
 /** แปลง path ในคลังไฟล์เป็น URL ชั่วคราวที่ Facebook เข้าถึงได้ */
 async function signMediaPaths(paths: string[]): Promise<string[]> {
   if (paths.length === 0) return [];
-  const { data, error } = await db.storage.from(MEDIA_BUCKET).createSignedUrls(paths, SIGNED_URL_TTL);
+  const { data, error } = await db.storage
+    .from(MEDIA_BUCKET)
+    .createSignedUrls(paths, SIGNED_URL_TTL);
   if (error) throw new Error(`สร้างลิงก์ไฟล์ไม่สำเร็จ: ${error.message}`);
 
   return paths.map((path) => {
@@ -168,7 +172,9 @@ async function ensureTikTokToken(
   if (fresh) return credential.access_token;
 
   if (!credential.refresh_token) {
-    throw new Error("สิทธิ์ TikTok หมดอายุ และไม่มีรหัสต่ออายุ — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า");
+    throw new Error(
+      "สิทธิ์ TikTok หมดอายุ และไม่มีรหัสต่ออายุ — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า",
+    );
   }
   if (credential.refresh_expires_at && new Date(credential.refresh_expires_at) < new Date()) {
     throw new Error("สิทธิ์ TikTok หมดอายุแล้ว — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า");
@@ -209,7 +215,8 @@ async function publishToTikTok(
 ): Promise<PublishResult> {
   const tt = await import("@/lib/tiktok.server");
 
-  if (mediaPaths.length === 0) throw new Error("TikTok ต้องมีคลิปวิดีโอ 1 คลิป — โพสต์ข้อความล้วนไม่ได้");
+  if (mediaPaths.length === 0)
+    throw new Error("TikTok ต้องมีคลิปวิดีโอ 1 คลิป — โพสต์ข้อความล้วนไม่ได้");
   const videos = mediaPaths.filter(isVideoPath);
   if (videos.length !== mediaPaths.length) throw new Error("TikTok รับได้เฉพาะไฟล์วิดีโอ");
   if (videos.length > 1) throw new Error("TikTok โพสต์ได้ 1 คลิปต่อโพสต์ — แยกเป็นหลายโพสต์แทน");
@@ -236,12 +243,15 @@ async function publishToTikTok(
 
   const [url] = await signMediaPaths(videos);
   const scopes = credential.scopes ?? [];
-  const canDirectPost = scopes.includes("video.publish");
-  const privacyOptions = ((credential.meta as { privacy_options?: string[] } | null)
-    ?.privacy_options ?? []) as string[];
-  const privacyLevel = privacyOptions.includes("PUBLIC_TO_EVERYONE")
-    ? "PUBLIC_TO_EVERYONE"
-    : (privacyOptions[0] ?? "SELF_ONLY");
+
+  // TikTok บังคับให้เคารพสิ่งที่ผู้ใช้เลือกเอง ห้ามให้ระบบเดาความเป็นส่วนตัวให้
+  // ถ้าโพสต์เก่ายังไม่มีตัวเลือกที่บันทึกไว้ จะส่งเข้ากล่องร่างแทน ปลอดภัยกว่าเดาแล้วโพสต์สาธารณะผิด
+  const { parseTikTokOptions, validateTikTokOptions } = await import("@/lib/tiktok-options");
+  const choices = target.tiktok_options ? parseTikTokOptions(target.tiktok_options) : null;
+  const choiceProblem = choices
+    ? validateTikTokOptions(choices)
+    : "ยังไม่ได้เลือกตัวเลือกของ TikTok";
+  const canDirectPost = scopes.includes("video.publish") && !choiceProblem;
 
   const remember = async (publishId: string) => {
     // จดรหัสงานก่อนอัปโหลดจริง — ถ้าพังกลางทาง รอบหน้าจะมาต่อจากงานนี้ ไม่โพสต์ซ้ำ
@@ -253,7 +263,7 @@ async function publishToTikTok(
     ({ publishId } = await tt.publishTikTokVideo(
       token,
       url!,
-      { directPost: canDirectPost, title: caption, privacyLevel },
+      { directPost: canDirectPost, title: caption, choices },
       remember,
     ));
   } catch (error) {
@@ -280,8 +290,6 @@ async function publishToTikTok(
   return { postId: state.postId, permalink: tt.tiktokPermalink(username, state.postId) };
 }
 
-
-
 /**
  * เผยแพร่โพสต์หนึ่งโพสต์ไปทุกเพจที่เลือกไว้
  * ปลอดภัยที่จะเรียกซ้ำ — ปลายทางที่ส่งไปแล้วจะถูกข้าม
@@ -300,7 +308,7 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
   const { data: targetRows, error: targetError } = await db
     .from("post_targets")
     .select(
-      "id, platform, channel_account_id, override_body, status, attempt_count, external_id, pending_external_id",
+      "id, platform, channel_account_id, override_body, status, attempt_count, external_id, pending_external_id, tiktok_options",
     )
     .eq("post_id", postId);
   if (targetError) throw new Error(targetError.message);
@@ -343,7 +351,6 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       summary.published += 1;
       continue;
     }
-
 
     const { data: claimed } = await db
       .from("post_targets")
@@ -450,8 +457,10 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       summary.failed += 1;
       summary.errors.push(message);
 
-
-      await updateWithRetry("post_targets", target.id, { status: "failed", error_message: message });
+      await updateWithRetry("post_targets", target.id, {
+        status: "failed",
+        error_message: message,
+      });
 
       if (target.channel_account_id) {
         await db

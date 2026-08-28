@@ -11,6 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MediaPicker } from "@/components/app/MediaPicker";
+import { TikTokPostOptions } from "@/components/app/TikTokPostOptions";
+import {
+  TIKTOK_DEFAULT_OPTIONS,
+  parseTikTokOptions,
+  validateTikTokOptions,
+  type TikTokPostOptionsValue,
+} from "@/lib/tiktok-options";
 import {
   PLATFORMS,
   STATUS_META,
@@ -60,6 +67,8 @@ function ComposePage() {
   const [accountIds, setAccountIds] = useState<string[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [status, setStatus] = useState<PostStatus>("draft");
+  const [tiktokOptions, setTiktokOptions] =
+    useState<TikTokPostOptionsValue>(TIKTOK_DEFAULT_OPTIONS);
 
   useEffect(() => {
     if (brandId) setDraftBrand(brandId);
@@ -87,7 +96,9 @@ function ComposePage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("posts")
-        .select("*, post_targets(id, platform, channel_account_id, status, error_message)")
+        .select(
+          "*, post_targets(id, platform, channel_account_id, status, error_message, tiktok_options)",
+        )
         .eq("id", id!)
         .maybeSingle();
       if (error) throw error;
@@ -106,9 +117,15 @@ function ComposePage() {
     const targets = (post.post_targets ?? []) as {
       platform: Platform;
       channel_account_id: string | null;
+      tiktok_options?: unknown;
     }[];
     setAccountIds(targets.map((t) => t.channel_account_id).filter((v): v is string => !!v));
     setPlatforms([...new Set(targets.filter((t) => !t.channel_account_id).map((t) => t.platform))]);
+    // ตัวเลือก TikTok เก็บไว้ที่ target ของ TikTok — ดึงกลับมาแสดงตอนแก้ไขโพสต์เดิม
+    const savedTikTok = targets.find((t) => t.platform === "tiktok" && t.tiktok_options);
+    setTiktokOptions(
+      savedTikTok ? parseTikTokOptions(savedTikTok.tiktok_options) : TIKTOK_DEFAULT_OPTIONS,
+    );
   }, [post]);
 
   const locked = status === "published" || status === "publishing";
@@ -118,12 +135,24 @@ function ComposePage() {
     ...accounts.filter((a) => accountIds.includes(a.id)).map((a) => a.platform),
   ]);
 
+  // บัญชี TikTok ที่ถูกเลือกอยู่ — ใช้ดึงตัวเลือกความเป็นส่วนตัวที่บัญชีนั้นใช้ได้จริง
+  const tiktokAccountId =
+    accounts.find((a) => a.platform === "tiktok" && accountIds.includes(a.id))?.id ?? null;
+  const tiktokSelected = selectedPlatformSet.has("tiktok");
+
   const save = useMutation({
     mutationFn: async (nextStatus: PostStatus) => {
       if (!activeBrand) throw new Error("กรุณาเลือกแบรนด์ก่อน");
-      if (!body.trim() && mediaPaths.length === 0) throw new Error("ใส่เนื้อหาหรือแนบสื่ออย่างน้อย 1 อย่าง");
+      if (!body.trim() && mediaPaths.length === 0)
+        throw new Error("ใส่เนื้อหาหรือแนบสื่ออย่างน้อย 1 อย่าง");
       if (accountIds.length === 0 && platforms.length === 0)
         throw new Error("เลือกช่องทางอย่างน้อย 1 ช่องทาง");
+
+      // TikTok บังคับให้ผู้ใช้เลือกตัวเลือกเองก่อนโพสต์ — กันไว้ตั้งแต่ตอนบันทึก
+      if (tiktokSelected && nextStatus !== "draft") {
+        const problem = validateTikTokOptions(tiktokOptions);
+        if (problem) throw new Error(`TikTok: ${problem}`);
+      }
 
       const payload = {
         brand_id: activeBrand,
@@ -139,7 +168,10 @@ function ComposePage() {
       if (postId) {
         const { error } = await supabase.from("posts").update(payload).eq("id", postId);
         if (error) throw error;
-        const { error: delError } = await supabase.from("post_targets").delete().eq("post_id", postId);
+        const { error: delError } = await supabase
+          .from("post_targets")
+          .delete()
+          .eq("post_id", postId);
         if (delError) throw delError;
       } else {
         const { data, error } = await supabase.from("posts").insert(payload).select("id").single();
@@ -147,11 +179,23 @@ function ComposePage() {
         postId = data.id;
       }
 
+      // แนบตัวเลือก TikTok เฉพาะแถวของ TikTok ช่องทางอื่นไม่ใช้คอลัมน์นี้
+      const ttOptions = tiktokSelected ? tiktokOptions : null;
       const rows = [
         ...accounts
           .filter((a) => accountIds.includes(a.id))
-          .map((a) => ({ post_id: postId!, platform: a.platform, channel_account_id: a.id })),
-        ...platforms.map((platform) => ({ post_id: postId!, platform, channel_account_id: null })),
+          .map((a) => ({
+            post_id: postId!,
+            platform: a.platform,
+            channel_account_id: a.id,
+            tiktok_options: a.platform === "tiktok" ? ttOptions : null,
+          })),
+        ...platforms.map((platform) => ({
+          post_id: postId!,
+          platform,
+          channel_account_id: null,
+          tiktok_options: platform === "tiktok" ? ttOptions : null,
+        })),
       ];
 
       const { error: targetError } = await supabase.from("post_targets").insert(rows);
@@ -291,7 +335,9 @@ function ComposePage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-foreground">{platform.label}</span>
+                    <span className="block text-sm font-semibold text-foreground">
+                      {platform.label}
+                    </span>
                     <span className="block text-xs text-muted-foreground">{platform.note}</span>
                   </span>
                   {pageAccounts.length === 0 ? (
@@ -300,12 +346,15 @@ function ComposePage() {
                       onClick={() => togglePlatform(platform.id)}
                       aria-pressed={platforms.includes(platform.id)}
                       className={`size-6 shrink-0 rounded-full border-2 transition-colors ${
-                        platforms.includes(platform.id) ? "border-primary bg-primary" : "border-input"
+                        platforms.includes(platform.id)
+                          ? "border-primary bg-primary"
+                          : "border-input"
                       }`}
                     />
                   ) : (
                     <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                      {pageAccounts.filter((a) => accountIds.includes(a.id)).length}/{pageAccounts.length}
+                      {pageAccounts.filter((a) => accountIds.includes(a.id)).length}/
+                      {pageAccounts.length}
                     </span>
                   )}
                 </div>
@@ -347,6 +396,16 @@ function ComposePage() {
           เพิ่มเพจได้หลายเพจต่อช่องทางที่หน้าตั้งค่า แล้วเลือกส่งพร้อมกันได้เลย
         </p>
       </fieldset>
+
+      {tiktokSelected ? (
+        <section className="space-y-2">
+          <TikTokPostOptions
+            channelAccountId={tiktokAccountId}
+            value={tiktokOptions}
+            onChange={setTiktokOptions}
+          />
+        </section>
+      ) : null}
 
       <div className="space-y-1.5">
         <Label htmlFor="schedule">เวลาเผยแพร่ (เวลาไทย)</Label>

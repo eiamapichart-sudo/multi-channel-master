@@ -8,6 +8,12 @@
  * PULL_FROM_URL บังคับให้โดเมนของลิงก์ผ่านการยืนยันในหน้า TikTok Developer
  * ซึ่งลิงก์ไฟล์ของเราอยู่บนโดเมนคลังไฟล์ที่ยืนยันไม่ได้ → เราจึงส่ง byte ขึ้นให้ TikTok เอง
  */
+import {
+  isPrivacyLevel,
+  type TikTokCreatorInfo,
+  type TikTokPostOptionsValue,
+} from "@/lib/tiktok-options";
+
 const OPEN_API = "https://open.tiktokapis.com/v2";
 const AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/";
 
@@ -59,8 +65,7 @@ async function parseOrThrow(res: Response, context: string): Promise<any> {
   }
 
   const errCode: string | undefined = json.error?.code ?? json.error ?? undefined;
-  const errMessage: string | undefined =
-    json.error?.message ?? json.error_description ?? undefined;
+  const errMessage: string | undefined = json.error?.message ?? json.error_description ?? undefined;
 
   if (!res.ok || (errCode && errCode !== "ok")) {
     throw new TikTokError(
@@ -163,25 +168,32 @@ export function refreshAccessToken(refreshToken: string) {
   );
 }
 
-export type TikTokCreator = {
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-  privacyOptions: string[];
-  maxDurationSec: number | null;
-};
+export type TikTokCreator = TikTokCreatorInfo;
 
-/** ข้อมูลครีเอเตอร์ + ตัวเลือกความเป็นส่วนตัวที่ใช้ได้จริง (TikTok บังคับให้ถามก่อนโพสต์) */
+/**
+ * ข้อมูลครีเอเตอร์ + ตัวเลือกความเป็นส่วนตัวที่ใช้ได้จริง
+ *
+ * TikTok บังคับให้เรียกทุกครั้งก่อนแสดงฟอร์มโพสต์ แล้วแสดงตัวเลือกตามที่ได้กลับมา
+ * ห้าม hardcode ตัวเลือกเอง เพราะแต่ละบัญชี (เช่นบัญชีส่วนตัว) มีสิทธิ์ไม่เท่ากัน
+ */
 export async function getCreatorInfo(token: string): Promise<TikTokCreator> {
-  const json = await apiPost("/post/publish/creator_info/query/", token, {}, "ดึงข้อมูลบัญชี TikTok");
+  const json = await apiPost(
+    "/post/publish/creator_info/query/",
+    token,
+    {},
+    "ดึงข้อมูลบัญชี TikTok",
+  );
   const d = json.data ?? {};
   return {
     username: String(d.creator_username ?? ""),
     displayName: String(d.creator_nickname ?? d.creator_username ?? "TikTok"),
     avatarUrl: d.creator_avatar_url ? String(d.creator_avatar_url) : null,
-    privacyOptions: Array.isArray(d.privacy_level_options)
-      ? d.privacy_level_options.map(String)
-      : [],
+    privacyOptions: (Array.isArray(d.privacy_level_options) ? d.privacy_level_options : [])
+      .map(String)
+      .filter(isPrivacyLevel),
+    commentDisabled: d.comment_disabled === true,
+    duetDisabled: d.duet_disabled === true,
+    stitchDisabled: d.stitch_disabled === true,
     maxDurationSec: d.max_video_post_duration_sec ? Number(d.max_video_post_duration_sec) : null,
   };
 }
@@ -251,9 +263,31 @@ export type TikTokPostOptions = {
   /** โพสต์ขึ้นโปรไฟล์เลย (ต้องมีสิทธิ์ video.publish และแอปผ่าน audit) */
   directPost: boolean;
   title: string;
-  privacyLevel?: string;
+  /** สิ่งที่ผู้ใช้เลือกเองในหน้าสร้างโพสต์ — TikTok บังคับให้เคารพค่านี้ */
+  choices?: TikTokPostOptionsValue | null;
   mime?: string;
 };
+
+/**
+ * แปลงตัวเลือกของผู้ใช้เป็น post_info ตามสเปกของ TikTok
+ *
+ * ถ้าผู้ใช้ยังไม่ได้เลือกความเป็นส่วนตัว จะไม่เดาให้ — ตกลงที่ SELF_ONLY ซึ่งปลอดภัยที่สุด
+ * เพราะกติกา TikTok ห้ามโพสต์สาธารณะโดยที่ผู้ใช้ไม่ได้เลือกเอง
+ */
+function buildPostInfo(options: TikTokPostOptions) {
+  const c = options.choices ?? null;
+  return {
+    title: options.title.slice(0, 2200),
+    privacy_level: c?.privacyLevel ?? "SELF_ONLY",
+    disable_comment: c?.disableComment ?? false,
+    disable_duet: c?.disableDuet ?? false,
+    disable_stitch: c?.disableStitch ?? false,
+    // เปิดเผยเนื้อหาเชิงพาณิชย์ — ส่งค่าจริงเมื่อผู้ใช้เปิดสวิตช์เปิดเผยเท่านั้น
+    brand_content_toggle: c?.disclose === true && c.brandContent === true,
+    brand_organic_toggle: c?.disclose === true && c.brandOrganic === true,
+    is_aigc: c?.isAigc === true,
+  };
+}
 
 /**
  * ส่งคลิปขึ้น TikTok
@@ -278,21 +312,11 @@ export async function publishTikTokVideo(
     total_chunk_count: 1,
   };
 
-  const path = options.directPost
-    ? "/post/publish/video/init/"
-    : "/post/publish/inbox/video/init/";
+  const path = options.directPost ? "/post/publish/video/init/" : "/post/publish/inbox/video/init/";
 
+  // กล่องร่าง (inbox) ไม่รับ post_info — ผู้ใช้จะไปตั้งค่าเองในแอป TikTok
   const body = options.directPost
-    ? {
-        post_info: {
-          title: options.title.slice(0, 2200),
-          privacy_level: options.privacyLevel ?? "SELF_ONLY",
-          disable_duet: false,
-          disable_comment: false,
-          disable_stitch: false,
-        },
-        source_info: sourceInfo,
-      }
+    ? { post_info: buildPostInfo(options), source_info: sourceInfo }
     : { source_info: sourceInfo };
 
   const init = await apiPost(path, token, body, "เริ่มงานโพสต์ TikTok");
@@ -328,7 +352,10 @@ export async function fetchPublishStatus(
       "ตรวจสถานะโพสต์ TikTok",
     );
   } catch (error) {
-    return { state: "failed", reason: error instanceof Error ? error.message : "ตรวจสถานะไม่สำเร็จ" };
+    return {
+      state: "failed",
+      reason: error instanceof Error ? error.message : "ตรวจสถานะไม่สำเร็จ",
+    };
   }
 
   const d = json.data ?? {};
@@ -384,7 +411,11 @@ export function humanizeTikTokError(error: unknown): string {
   }
 
   const code = error.code ?? "";
-  if (code === "access_token_invalid" || code === "access_token_expired" || error.httpStatus === 401) {
+  if (
+    code === "access_token_invalid" ||
+    code === "access_token_expired" ||
+    error.httpStatus === 401
+  ) {
     return "สิทธิ์เข้าถึง TikTok หมดอายุ — กดเชื่อมต่อ TikTok ใหม่ในหน้าตั้งค่า";
   }
   if (code === "scope_not_authorized" || code === "scope_permission_missed") {

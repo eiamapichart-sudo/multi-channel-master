@@ -21,6 +21,7 @@ import { Route as AuthenticatedComposeRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as ApiPublishCronRouteImport } from './routes/api/publish/cron'
 import { Route as ApiPublishNowRouteImport } from './routes/api/publish/now'
+import { Route as ApiTiktokCreatorInfoRouteImport } from './routes/api/tiktok/creator-info'
 import { Route as ApiOauthFacebookCallbackRouteImport } from './routes/api/oauth/facebook/callback'
 import { Route as ApiOauthFacebookConnectRouteImport } from './routes/api/oauth/facebook/connect'
 import { Route as ApiOauthFacebookPagesRouteImport } from './routes/api/oauth/facebook/pages'
@@ -87,6 +88,11 @@ const ApiPublishNowRoute = ApiPublishNowRouteImport.update({
   path: '/api/publish/now',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTiktokCreatorInfoRoute = ApiTiktokCreatorInfoRouteImport.update({
+  id: '/api/tiktok/creator-info',
+  path: '/api/tiktok/creator-info',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOauthFacebookCallbackRoute =
   ApiOauthFacebookCallbackRouteImport.update({
     id: '/api/oauth/facebook/callback',
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/publish/cron': typeof ApiPublishCronRoute
   '/api/publish/now': typeof ApiPublishNowRoute
+  '/api/tiktok/creator-info': typeof ApiTiktokCreatorInfoRoute
   '/api/oauth/facebook/callback': typeof ApiOauthFacebookCallbackRoute
   '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
   '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
@@ -150,6 +157,7 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/api/publish/cron': typeof ApiPublishCronRoute
   '/api/publish/now': typeof ApiPublishNowRoute
+  '/api/tiktok/creator-info': typeof ApiTiktokCreatorInfoRoute
   '/api/oauth/facebook/callback': typeof ApiOauthFacebookCallbackRoute
   '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
   '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
@@ -171,6 +179,7 @@ export interface FileRoutesById {
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/api/publish/cron': typeof ApiPublishCronRoute
   '/api/publish/now': typeof ApiPublishNowRoute
+  '/api/tiktok/creator-info': typeof ApiTiktokCreatorInfoRoute
   '/api/oauth/facebook/callback': typeof ApiOauthFacebookCallbackRoute
   '/api/oauth/facebook/connect': typeof ApiOauthFacebookConnectRoute
   '/api/oauth/facebook/pages': typeof ApiOauthFacebookPagesRoute
@@ -192,6 +201,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/api/publish/cron'
     | '/api/publish/now'
+    | '/api/tiktok/creator-info'
     | '/api/oauth/facebook/callback'
     | '/api/oauth/facebook/connect'
     | '/api/oauth/facebook/pages'
@@ -211,6 +221,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/publish/cron'
     | '/api/publish/now'
+    | '/api/tiktok/creator-info'
     | '/api/oauth/facebook/callback'
     | '/api/oauth/facebook/connect'
     | '/api/oauth/facebook/pages'
@@ -231,6 +242,7 @@ export interface FileRouteTypes {
     | '/_authenticated/'
     | '/api/publish/cron'
     | '/api/publish/now'
+    | '/api/tiktok/creator-info'
     | '/api/oauth/facebook/callback'
     | '/api/oauth/facebook/connect'
     | '/api/oauth/facebook/pages'
@@ -247,6 +259,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   ApiPublishCronRoute: typeof ApiPublishCronRoute
   ApiPublishNowRoute: typeof ApiPublishNowRoute
+  ApiTiktokCreatorInfoRoute: typeof ApiTiktokCreatorInfoRoute
   ApiOauthFacebookCallbackRoute: typeof ApiOauthFacebookCallbackRoute
   ApiOauthFacebookConnectRoute: typeof ApiOauthFacebookConnectRoute
   ApiOauthFacebookPagesRoute: typeof ApiOauthFacebookPagesRoute
@@ -341,6 +354,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublishNowRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tiktok/creator-info': {
+      id: '/api/tiktok/creator-info'
+      path: '/api/tiktok/creator-info'
+      fullPath: '/api/tiktok/creator-info'
+      preLoaderRoute: typeof ApiTiktokCreatorInfoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/oauth/facebook/callback': {
       id: '/api/oauth/facebook/callback'
       path: '/api/oauth/facebook/callback'
@@ -413,6 +433,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   ApiPublishCronRoute: ApiPublishCronRoute,
   ApiPublishNowRoute: ApiPublishNowRoute,
+  ApiTiktokCreatorInfoRoute: ApiTiktokCreatorInfoRoute,
   ApiOauthFacebookCallbackRoute: ApiOauthFacebookCallbackRoute,
   ApiOauthFacebookConnectRoute: ApiOauthFacebookConnectRoute,
   ApiOauthFacebookPagesRoute: ApiOauthFacebookPagesRoute,

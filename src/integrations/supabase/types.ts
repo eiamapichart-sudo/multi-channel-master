@@ -239,6 +239,7 @@ export type Database = {
           override_body: string | null
           pending_external_id: string | null
           platform: Database["public"]["Enums"]["platform"]
+          tiktok_options: Json | null
           post_id: string
           published_at: string | null
           status: Database["public"]["Enums"]["target_status"]
@@ -256,6 +257,7 @@ export type Database = {
           override_body?: string | null
           pending_external_id?: string | null
           platform: Database["public"]["Enums"]["platform"]
+          tiktok_options: Json | null
           post_id: string
           published_at?: string | null
           status?: Database["public"]["Enums"]["target_status"]
@@ -273,6 +275,7 @@ export type Database = {
           override_body?: string | null
           pending_external_id?: string | null
           platform?: Database["public"]["Enums"]["platform"]
+          tiktok_options?: Json | null
           post_id?: string
           published_at?: string | null
           status?: Database["public"]["Enums"]["target_status"]
