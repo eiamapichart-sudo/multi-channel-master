@@ -58,3 +58,4 @@ export function localInputToIso(value: string) {
     const y = Number(value.slice(0, 4));
   const fixed = y > 2400 ? String(y - 543) + value.slice(4) : value;
   return new Date(fixed + ":00+07:00").toISOString();
+}
