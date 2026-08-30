@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MediaPicker } from "@/components/app/MediaPicker";
 import { TikTokPostOptions } from "@/components/app/TikTokPostOptions";
 import { YouTubePostOptions } from "@/components/app/YouTubePostOptions";
+import { useClipInfo } from "@/lib/use-clip-info";
 import {
   TIKTOK_DEFAULT_OPTIONS,
   parseTikTokOptions,
@@ -144,6 +145,9 @@ function ComposePage() {
   }, [post]);
 
   const locked = status === "published" || status === "publishing";
+
+  // อ่านความยาว/ขนาดภาพของคลิป ใช้เตือนเรื่อง Shorts และให้เลือกเฟรมปกของ TikTok
+  const clip = useClipInfo(mediaPaths);
 
   const selectedPlatformSet = new Set<Platform>([
     ...platforms,
@@ -431,6 +435,7 @@ function ComposePage() {
         <section className="space-y-2">
           <TikTokPostOptions
             channelAccountId={tiktokAccountId}
+            clip={clip}
             value={tiktokOptions}
             onChange={setTiktokOptions}
           />
@@ -441,6 +446,8 @@ function ComposePage() {
         <section className="space-y-2">
           <YouTubePostOptions
             accountName={youtubeAccountName}
+            brandId={activeBrand}
+            clip={clip}
             value={youtubeOptions}
             onChange={setYoutubeOptions}
           />
