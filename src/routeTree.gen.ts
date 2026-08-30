@@ -28,6 +28,8 @@ import { Route as ApiOauthFacebookPagesRouteImport } from './routes/api/oauth/fa
 import { Route as ApiOauthFacebookStartRouteImport } from './routes/api/oauth/facebook/start'
 import { Route as ApiOauthTiktokCallbackRouteImport } from './routes/api/oauth/tiktok/callback'
 import { Route as ApiOauthTiktokStartRouteImport } from './routes/api/oauth/tiktok/start'
+import { Route as ApiOauthYoutubeCallbackRouteImport } from './routes/api/oauth/youtube/callback'
+import { Route as ApiOauthYoutubeStartRouteImport } from './routes/api/oauth/youtube/start'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -124,6 +126,16 @@ const ApiOauthTiktokStartRoute = ApiOauthTiktokStartRouteImport.update({
   path: '/api/oauth/tiktok/start',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOauthYoutubeCallbackRoute = ApiOauthYoutubeCallbackRouteImport.update({
+  id: '/api/oauth/youtube/callback',
+  path: '/api/oauth/youtube/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthYoutubeStartRoute = ApiOauthYoutubeStartRouteImport.update({
+  id: '/api/oauth/youtube/start',
+  path: '/api/oauth/youtube/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -144,6 +156,8 @@ export interface FileRoutesByFullPath {
   '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
   '/api/oauth/tiktok/callback': typeof ApiOauthTiktokCallbackRoute
   '/api/oauth/tiktok/start': typeof ApiOauthTiktokStartRoute
+  '/api/oauth/youtube/callback': typeof ApiOauthYoutubeCallbackRoute
+  '/api/oauth/youtube/start': typeof ApiOauthYoutubeStartRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -164,6 +178,8 @@ export interface FileRoutesByTo {
   '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
   '/api/oauth/tiktok/callback': typeof ApiOauthTiktokCallbackRoute
   '/api/oauth/tiktok/start': typeof ApiOauthTiktokStartRoute
+  '/api/oauth/youtube/callback': typeof ApiOauthYoutubeCallbackRoute
+  '/api/oauth/youtube/start': typeof ApiOauthYoutubeStartRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -186,6 +202,8 @@ export interface FileRoutesById {
   '/api/oauth/facebook/start': typeof ApiOauthFacebookStartRoute
   '/api/oauth/tiktok/callback': typeof ApiOauthTiktokCallbackRoute
   '/api/oauth/tiktok/start': typeof ApiOauthTiktokStartRoute
+  '/api/oauth/youtube/callback': typeof ApiOauthYoutubeCallbackRoute
+  '/api/oauth/youtube/start': typeof ApiOauthYoutubeStartRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -208,6 +226,8 @@ export interface FileRouteTypes {
     | '/api/oauth/facebook/start'
     | '/api/oauth/tiktok/callback'
     | '/api/oauth/tiktok/start'
+    | '/api/oauth/youtube/callback'
+    | '/api/oauth/youtube/start'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -228,6 +248,8 @@ export interface FileRouteTypes {
     | '/api/oauth/facebook/start'
     | '/api/oauth/tiktok/callback'
     | '/api/oauth/tiktok/start'
+    | '/api/oauth/youtube/callback'
+    | '/api/oauth/youtube/start'
   id:
     | '__root__'
     | '/_authenticated'
@@ -249,6 +271,8 @@ export interface FileRouteTypes {
     | '/api/oauth/facebook/start'
     | '/api/oauth/tiktok/callback'
     | '/api/oauth/tiktok/start'
+    | '/api/oauth/youtube/callback'
+    | '/api/oauth/youtube/start'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -266,6 +290,8 @@ export interface RootRouteChildren {
   ApiOauthFacebookStartRoute: typeof ApiOauthFacebookStartRoute
   ApiOauthTiktokCallbackRoute: typeof ApiOauthTiktokCallbackRoute
   ApiOauthTiktokStartRoute: typeof ApiOauthTiktokStartRoute
+  ApiOauthYoutubeCallbackRoute: typeof ApiOauthYoutubeCallbackRoute
+  ApiOauthYoutubeStartRoute: typeof ApiOauthYoutubeStartRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -403,6 +429,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOauthTiktokStartRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/oauth/youtube/callback': {
+      id: '/api/oauth/youtube/callback'
+      path: '/api/oauth/youtube/callback'
+      fullPath: '/api/oauth/youtube/callback'
+      preLoaderRoute: typeof ApiOauthYoutubeCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/youtube/start': {
+      id: '/api/oauth/youtube/start'
+      path: '/api/oauth/youtube/start'
+      fullPath: '/api/oauth/youtube/start'
+      preLoaderRoute: typeof ApiOauthYoutubeStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -440,6 +480,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOauthFacebookStartRoute: ApiOauthFacebookStartRoute,
   ApiOauthTiktokCallbackRoute: ApiOauthTiktokCallbackRoute,
   ApiOauthTiktokStartRoute: ApiOauthTiktokStartRoute,
+  ApiOauthYoutubeCallbackRoute: ApiOauthYoutubeCallbackRoute,
+  ApiOauthYoutubeStartRoute: ApiOauthYoutubeStartRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -25,7 +25,7 @@ const BATCH_SIZE = 10;
 /** จำนวนครั้งที่ยอมให้ลองใหม่ต่อหนึ่งปลายทางก่อนหยุด */
 export const MAX_ATTEMPTS = 3;
 /** ช่องทางที่ระบบส่งขึ้นได้จริงแล้ว */
-const LIVE_PLATFORMS = ["facebook", "instagram", "tiktok"];
+const LIVE_PLATFORMS = ["facebook", "instagram", "tiktok", "youtube"];
 
 const isVideoPath = (path: string) =>
   /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(path.split("?")[0] ?? "");
@@ -42,6 +42,8 @@ type TargetRow = {
   pending_external_id: string | null;
   /** TikTok: ตัวเลือกที่ผู้ใช้เลือกเองตอนสร้างโพสต์ (ความเป็นส่วนตัว ฯลฯ) */
   tiktok_options?: unknown;
+  /** YouTube: ชื่อคลิป คำบรรยาย ความเป็นส่วนตัว ป้ายทำเพื่อเด็ก และ Shorts */
+  youtube_options?: unknown;
 };
 
 export type PublishSummary = {
@@ -291,6 +293,104 @@ async function publishToTikTok(
 }
 
 /**
+ * ต่ออายุสิทธิ์ YouTube ให้เอง — access token ของ Google อายุแค่ ~1 ชม.
+ * ถ้าเหลือน้อยกว่า 10 นาที (หรือหมดแล้ว) จะใช้ refresh token ขอใหม่และบันทึกทับ
+ *
+ * หมายเหตุ: Google ส่ง refresh token มาให้เฉพาะตอนผู้ใช้กดยินยอมใหม่
+ * ตอนต่ออายุจะไม่มีมาด้วย จึงต้องเก็บของเดิมไว้เสมอ
+ */
+async function ensureYouTubeToken(
+  channelAccountId: string,
+  credential: CredentialRow,
+): Promise<string> {
+  const expiresAt = credential.token_expires_at ? new Date(credential.token_expires_at) : null;
+  const fresh = !expiresAt || expiresAt.getTime() - Date.now() > 10 * 60_000;
+  if (fresh) return credential.access_token;
+
+  if (!credential.refresh_token) {
+    throw new Error(
+      "สิทธิ์ YouTube หมดอายุ และไม่มีรหัสต่ออายุ — กดเชื่อมต่อ YouTube ใหม่ในหน้าตั้งค่า",
+    );
+  }
+
+  const { refreshAccessToken } = await import("@/lib/youtube.server");
+  const tokens = await refreshAccessToken(credential.refresh_token);
+
+  await db
+    .from("channel_credentials")
+    .update({
+      access_token: tokens.accessToken,
+      token_expires_at: tokens.expiresAt?.toISOString() ?? null,
+      refresh_token: tokens.refreshToken ?? credential.refresh_token,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("channel_account_id", channelAccountId);
+
+  return tokens.accessToken;
+}
+
+/**
+ * อัปคลิปขึ้น YouTube หนึ่งช่อง
+ *
+ * - YouTube รับได้ 1 คลิปต่อโพสต์ และไม่รับรูปผ่านช่องทางนี้
+ * - Shorts กับวิดีโอปกติใช้ปลายทางเดียวกัน ต่างกันแค่ความยาว สัดส่วน และแท็ก #Shorts
+ * - ถ้ารอบก่อนอัปค้างไว้ (pending_external_id = upload url) จะไปเช็คงานเดิมก่อน
+ *   เพื่อไม่ให้เกิดคลิปซ้ำบนช่อง
+ */
+async function publishToYouTube(
+  target: TargetRow,
+  token: string,
+  caption: string,
+  mediaPaths: string[],
+): Promise<PublishResult> {
+  const yt = await import("@/lib/youtube.server");
+  const { parseYouTubeOptions, validateYouTubeOptions, youtubePermalink } = await import(
+    "@/lib/youtube-options"
+  );
+
+  if (mediaPaths.length === 0)
+    throw new Error("YouTube ต้องมีคลิปวิดีโอ 1 คลิป — โพสต์ข้อความล้วนไม่ได้");
+  const videos = mediaPaths.filter(isVideoPath);
+  if (videos.length !== mediaPaths.length) throw new Error("YouTube รับได้เฉพาะไฟล์วิดีโอ");
+  if (videos.length > 1) throw new Error("YouTube โพสต์ได้ 1 คลิปต่อโพสต์ — แยกเป็นหลายโพสต์แทน");
+
+  if (!target.youtube_options) {
+    throw new Error("ยังไม่ได้กรอกตัวเลือกของ YouTube — เปิดโพสต์นี้แล้วกรอกชื่อคลิปก่อน");
+  }
+  const choices = parseYouTubeOptions(target.youtube_options);
+  const problem = validateYouTubeOptions(choices);
+  if (problem) throw new Error(problem);
+
+  // งานค้างจากรอบก่อน → เช็คก่อนว่ามันอัปเสร็จไปแล้วหรือยัง
+  if (target.pending_external_id) {
+    const state = await yt.checkResumableUpload(target.pending_external_id);
+    if (state.state === "done") {
+      return {
+        postId: state.videoId,
+        permalink: youtubePermalink(state.videoId, choices.asShorts),
+      };
+    }
+    // incomplete / expired → เริ่มงานใหม่ด้านล่าง
+  }
+
+  const [url] = await signMediaPaths(videos);
+
+  const remember = async (uploadUrl: string) => {
+    // จดปลายทางอัปก่อนส่งไฟล์จริง — ถ้าพังกลางทาง รอบหน้าจะมาเช็คงานนี้ ไม่อัปซ้ำ
+    await updateWithRetry("post_targets", target.id, { pending_external_id: uploadUrl });
+  };
+
+  const { videoId } = await yt.uploadYouTubeVideo(
+    token,
+    url!,
+    { choices, fallbackDescription: caption },
+    remember,
+  );
+
+  return { postId: videoId, permalink: youtubePermalink(videoId, choices.asShorts) };
+}
+
+/**
  * เผยแพร่โพสต์หนึ่งโพสต์ไปทุกเพจที่เลือกไว้
  * ปลอดภัยที่จะเรียกซ้ำ — ปลายทางที่ส่งไปแล้วจะถูกข้าม
  */
@@ -308,7 +408,7 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
   const { data: targetRows, error: targetError } = await db
     .from("post_targets")
     .select(
-      "id, platform, channel_account_id, override_body, status, attempt_count, external_id, pending_external_id, tiktok_options",
+      "id, platform, channel_account_id, override_body, status, attempt_count, external_id, pending_external_id, tiktok_options, youtube_options",
     )
     .eq("post_id", postId);
   if (targetError) throw new Error(targetError.message);
@@ -344,7 +444,9 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
             ? instagramPermalinkFallback(target.external_id)
             : target.platform === "tiktok"
               ? `https://www.tiktok.com/video/${target.external_id}`
-              : permalinkFromPostId(target.external_id),
+              : target.platform === "youtube"
+                ? `https://www.youtube.com/watch?v=${target.external_id}`
+                : permalinkFromPostId(target.external_id),
         error_message: null,
         published_at: new Date().toISOString(),
       });
@@ -368,11 +470,15 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
     }
 
     const isTikTok = target.platform === "tiktok";
+    const isYouTube = target.platform === "youtube";
 
     try {
       if (isTikTok) {
         const { assertTikTokConfigured } = await import("@/lib/tiktok.server");
         assertTikTokConfigured();
+      } else if (isYouTube) {
+        const { assertYouTubeConfigured } = await import("@/lib/youtube.server");
+        assertYouTubeConfigured();
       } else {
         assertFacebookConfigured();
       }
@@ -389,7 +495,9 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
             ? "บัญชี Instagram นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ Facebook ในหน้าตั้งค่าก่อน"
             : isTikTok
               ? "บัญชี TikTok นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ TikTok ในหน้าตั้งค่าก่อน"
-              : "เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน",
+              : isYouTube
+                ? "ช่อง YouTube นี้ยังไม่ได้เชื่อมต่อ — กดเชื่อมต่อ YouTube ในหน้าตั้งค่าก่อน"
+                : "เพจนี้ยังไม่ได้เชื่อมต่อ Facebook — กดเชื่อมต่อในหน้าตั้งค่าก่อน",
         );
       }
 
@@ -406,6 +514,7 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       // TikTok ต่ออายุเองได้ ส่วน Meta ต้องให้ผู้ใช้กดเชื่อมใหม่
       if (
         !isTikTok &&
+        !isYouTube &&
         credential.token_expires_at &&
         new Date(credential.token_expires_at) < new Date()
       ) {
@@ -414,14 +523,18 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
 
       const accessToken = isTikTok
         ? await ensureTikTokToken(target.channel_account_id, credential)
-        : credential.access_token;
+        : isYouTube
+          ? await ensureYouTubeToken(target.channel_account_id, credential)
+          : credential.access_token;
 
       const message = (target.override_body ?? post.body ?? "").trim();
       const result = isTikTok
         ? await publishToTikTok(target, accessToken, message, mediaPaths, credential)
-        : target.platform === "instagram"
-          ? await publishToInstagram(target, account.external_id, accessToken, message, mediaPaths)
-          : await publishToFacebook(account.external_id, accessToken, message, mediaPaths);
+        : isYouTube
+          ? await publishToYouTube(target, accessToken, message, mediaPaths)
+          : target.platform === "instagram"
+            ? await publishToInstagram(target, account.external_id, accessToken, message, mediaPaths)
+            : await publishToFacebook(account.external_id, accessToken, message, mediaPaths);
 
       const saved = await updateWithRetry("post_targets", target.id, {
         status: "published",
@@ -451,6 +564,9 @@ export async function publishPost(postId: string): Promise<PublishSummary> {
       if (isTikTok) {
         const { humanizeTikTokError } = await import("@/lib/tiktok.server");
         message = humanizeTikTokError(error);
+      } else if (isYouTube) {
+        const { humanizeYouTubeError } = await import("@/lib/youtube.server");
+        message = humanizeYouTubeError(error);
       } else {
         message = humanizeFacebookError(error);
       }

@@ -12,12 +12,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MediaPicker } from "@/components/app/MediaPicker";
 import { TikTokPostOptions } from "@/components/app/TikTokPostOptions";
+import { YouTubePostOptions } from "@/components/app/YouTubePostOptions";
 import {
   TIKTOK_DEFAULT_OPTIONS,
   parseTikTokOptions,
   validateTikTokOptions,
   type TikTokPostOptionsValue,
 } from "@/lib/tiktok-options";
+import {
+  YOUTUBE_DEFAULT_OPTIONS,
+  parseYouTubeOptions,
+  validateYouTubeOptions,
+  type YouTubePostOptionsValue,
+} from "@/lib/youtube-options";
 import {
   PLATFORMS,
   STATUS_META,
@@ -69,6 +76,8 @@ function ComposePage() {
   const [status, setStatus] = useState<PostStatus>("draft");
   const [tiktokOptions, setTiktokOptions] =
     useState<TikTokPostOptionsValue>(TIKTOK_DEFAULT_OPTIONS);
+  const [youtubeOptions, setYoutubeOptions] =
+    useState<YouTubePostOptionsValue>(YOUTUBE_DEFAULT_OPTIONS);
 
   useEffect(() => {
     if (brandId) setDraftBrand(brandId);
@@ -97,7 +106,7 @@ function ComposePage() {
       const { data, error } = await supabase
         .from("posts")
         .select(
-          "*, post_targets(id, platform, channel_account_id, status, error_message, tiktok_options)",
+          "*, post_targets(id, platform, channel_account_id, status, error_message, tiktok_options, youtube_options)",
         )
         .eq("id", id!)
         .maybeSingle();
@@ -118,6 +127,7 @@ function ComposePage() {
       platform: Platform;
       channel_account_id: string | null;
       tiktok_options?: unknown;
+      youtube_options?: unknown;
     }[];
     setAccountIds(targets.map((t) => t.channel_account_id).filter((v): v is string => !!v));
     setPlatforms([...new Set(targets.filter((t) => !t.channel_account_id).map((t) => t.platform))]);
@@ -125,6 +135,11 @@ function ComposePage() {
     const savedTikTok = targets.find((t) => t.platform === "tiktok" && t.tiktok_options);
     setTiktokOptions(
       savedTikTok ? parseTikTokOptions(savedTikTok.tiktok_options) : TIKTOK_DEFAULT_OPTIONS,
+    );
+    // ตัวเลือก YouTube เก็บไว้ที่ target ของ YouTube — ดึงกลับมาแสดงตอนแก้ไขโพสต์เดิม
+    const savedYouTube = targets.find((t) => t.platform === "youtube" && t.youtube_options);
+    setYoutubeOptions(
+      savedYouTube ? parseYouTubeOptions(savedYouTube.youtube_options) : YOUTUBE_DEFAULT_OPTIONS,
     );
   }, [post]);
 
@@ -140,6 +155,12 @@ function ComposePage() {
     accounts.find((a) => a.platform === "tiktok" && accountIds.includes(a.id))?.id ?? null;
   const tiktokSelected = selectedPlatformSet.has("tiktok");
 
+  // ช่อง YouTube ที่ถูกเลือกอยู่ — ใช้แสดงชื่อช่องในแผงตัวเลือก
+  const youtubeAccountName =
+    accounts.find((a) => a.platform === "youtube" && accountIds.includes(a.id))?.account_name ??
+    null;
+  const youtubeSelected = selectedPlatformSet.has("youtube");
+
   const save = useMutation({
     mutationFn: async (nextStatus: PostStatus) => {
       if (!activeBrand) throw new Error("กรุณาเลือกแบรนด์ก่อน");
@@ -152,6 +173,12 @@ function ComposePage() {
       if (tiktokSelected && nextStatus !== "draft") {
         const problem = validateTikTokOptions(tiktokOptions);
         if (problem) throw new Error(`TikTok: ${problem}`);
+      }
+
+      // YouTube บังคับให้มีชื่อคลิป และต้องเลือกความเป็นส่วนตัวกับป้ายทำเพื่อเด็กเอง
+      if (youtubeSelected && nextStatus !== "draft") {
+        const problem = validateYouTubeOptions(youtubeOptions);
+        if (problem) throw new Error(`YouTube: ${problem}`);
       }
 
       const payload = {
@@ -181,6 +208,7 @@ function ComposePage() {
 
       // แนบตัวเลือก TikTok เฉพาะแถวของ TikTok ช่องทางอื่นไม่ใช้คอลัมน์นี้
       const ttOptions = tiktokSelected ? tiktokOptions : null;
+      const ytOptions = youtubeSelected ? youtubeOptions : null;
       const rows = [
         ...accounts
           .filter((a) => accountIds.includes(a.id))
@@ -189,12 +217,14 @@ function ComposePage() {
             platform: a.platform,
             channel_account_id: a.id,
             tiktok_options: a.platform === "tiktok" ? ttOptions : null,
+            youtube_options: a.platform === "youtube" ? ytOptions : null,
           })),
         ...platforms.map((platform) => ({
           post_id: postId!,
           platform,
           channel_account_id: null,
           tiktok_options: platform === "tiktok" ? ttOptions : null,
+          youtube_options: platform === "youtube" ? ytOptions : null,
         })),
       ];
 
@@ -403,6 +433,16 @@ function ComposePage() {
             channelAccountId={tiktokAccountId}
             value={tiktokOptions}
             onChange={setTiktokOptions}
+          />
+        </section>
+      ) : null}
+
+      {youtubeSelected ? (
+        <section className="space-y-2">
+          <YouTubePostOptions
+            accountName={youtubeAccountName}
+            value={youtubeOptions}
+            onChange={setYoutubeOptions}
           />
         </section>
       ) : null}

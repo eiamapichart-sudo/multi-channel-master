@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FacebookConnectCard } from "@/components/app/FacebookConnectCard";
 import { TikTokConnectCard } from "@/components/app/TikTokConnectCard";
+import { YouTubeConnectCard } from "@/components/app/YouTubeConnectCard";
 
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 
@@ -179,6 +180,7 @@ function SettingsPage() {
         <h2 className="font-display text-sm font-semibold text-foreground">เชื่อมต่อช่องทางจริง</h2>
         <FacebookConnectCard brandId={targetBrand} />
         <TikTokConnectCard brandId={targetBrand} />
+        <YouTubeConnectCard brandId={targetBrand} />
       </section>
 
 
