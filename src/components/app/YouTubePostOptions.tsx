@@ -1,18 +1,22 @@
 import { AlertTriangle, Play } from "lucide-react";
+import { CoverPicker } from "@/components/app/CoverPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  YOUTUBE_COVER_MAX_BYTES,
   YOUTUBE_DESCRIPTION_MAX,
   YOUTUBE_PRIVACY_LABELS,
   YOUTUBE_TITLE_MAX,
   validateYouTubeOptions,
   youtubeShortsNotice,
+  youtubeShortsWarning,
   type YouTubePostOptionsValue,
   type YouTubePrivacyStatus,
 } from "@/lib/youtube-options";
+import type { ClipInfo } from "@/lib/use-clip-info";
 
 /**
  * แผงตัวเลือกก่อนโพสต์ลง YouTube
@@ -23,10 +27,14 @@ import {
  */
 export function YouTubePostOptions({
   accountName,
+  brandId,
+  clip,
   value,
   onChange,
 }: {
   accountName: string | null;
+  brandId: string | null;
+  clip: ClipInfo;
   value: YouTubePostOptionsValue;
   onChange: (next: YouTubePostOptionsValue) => void;
 }) {
@@ -37,6 +45,7 @@ export function YouTubePostOptions({
 
   const problem = validateYouTubeOptions(value);
   const shortsNotice = youtubeShortsNotice(value);
+  const shortsWarning = youtubeShortsWarning(value, clip);
   const titleLength = value.title.trim().length;
 
   return (
@@ -160,9 +169,26 @@ export function YouTubePostOptions({
             onCheckedChange={(next) => set("asShorts", next)}
           />
         </div>
-        {shortsNotice ? (
+        {shortsWarning ? (
+          <p className="flex items-start gap-1.5 rounded-xl bg-accent/15 px-3 py-2 text-xs leading-5 text-foreground">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-accent" />
+            {shortsWarning}
+          </p>
+        ) : shortsNotice ? (
           <p className="text-[11px] leading-5 text-muted-foreground">{shortsNotice}</p>
         ) : null}
+      </div>
+
+      {/* รูปปก — YouTube เปิดให้อัปรูปเองได้ */}
+      <div className="space-y-2">
+        <Label className="text-xs font-semibold text-foreground">รูปปกคลิป</Label>
+        <CoverPicker
+          brandId={brandId}
+          value={value.coverPath}
+          onChange={(next) => set("coverPath", next)}
+          maxBytes={YOUTUBE_COVER_MAX_BYTES}
+          hint="ไม่ใส่ก็ได้ YouTube จะเลือกเฟรมให้เอง · JPEG หรือ PNG ไม่เกิน 2MB · ช่องต้องยืนยันตัวตนกับ YouTube แล้วถึงจะใช้ปกเองได้"
+        />
       </div>
 
       {problem ? (

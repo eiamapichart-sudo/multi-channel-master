@@ -4,7 +4,9 @@ import { AlertTriangle, Loader2, Music2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import type { ClipInfo } from "@/lib/use-clip-info";
 import {
   TIKTOK_PRIVACY_LABELS,
   tiktokDisclosureNotice,
@@ -32,10 +34,12 @@ type CreatorResponse = {
  */
 export function TikTokPostOptions({
   channelAccountId,
+  clip,
   value,
   onChange,
 }: {
   channelAccountId: string | null;
+  clip: ClipInfo;
   value: TikTokPostOptionsValue;
   onChange: (next: TikTokPostOptionsValue) => void;
 }) {
@@ -216,6 +220,28 @@ export function TikTokPostOptions({
             checked={value.isAigc}
             onChange={(next) => set("isAigc", next)}
           />
+
+          {/* รูปปก — TikTok ไม่เปิดให้อัปรูปเอง เลือกได้แค่เฟรมจากในคลิป */}
+          {clip.durationSec ? (
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <Label className="text-xs font-semibold text-foreground">รูปปกคลิป</Label>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  วินาทีที่ {(value.coverTimestampMs / 1000).toFixed(1)}
+                </span>
+              </div>
+              <Slider
+                value={[value.coverTimestampMs]}
+                min={0}
+                max={Math.max(0, Math.floor(clip.durationSec * 1000) - 100)}
+                step={100}
+                onValueChange={(next) => set("coverTimestampMs", next[0] ?? 0)}
+              />
+              <p className="text-[11px] leading-5 text-muted-foreground">
+                TikTok ไม่เปิดให้อัปรูปปกเอง เลือกได้แค่ว่าจะใช้เฟรมวินาทีไหนของคลิปเป็นปก
+              </p>
+            </div>
+          ) : null}
 
           {problem ? (
             <p className="flex items-start gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-5 text-destructive">
