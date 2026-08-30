@@ -22,10 +22,17 @@ export type YouTubePostOptionsValue = {
   madeForKids: boolean | null;
   /** เติม #Shorts ให้อัตโนมัติ เพื่อให้ YouTube จัดเป็น Shorts */
   asShorts: boolean;
+  /** path ของรูปปกในคลังไฟล์ — null = ให้ YouTube เลือกเฟรมเอง */
+  coverPath: string | null;
 };
 
 export const YOUTUBE_TITLE_MAX = 100;
 export const YOUTUBE_DESCRIPTION_MAX = 5000;
+
+/** ความยาวสูงสุดที่ YouTube ยังจัดให้เป็น Shorts (3 นาที) */
+export const YOUTUBE_SHORTS_MAX_SECONDS = 180;
+/** รูปปกที่ YouTube รับ — ไม่เกิน 2MB */
+export const YOUTUBE_COVER_MAX_BYTES = 2 * 1024 * 1024;
 
 /** เพดานขนาดไฟล์ที่เรากล้าโหลดเข้าหน่วยความจำเซิร์ฟเวอร์ก่อนส่งต่อให้ YouTube */
 export const YOUTUBE_MAX_VIDEO_BYTES = 256 * 1024 * 1024;
@@ -36,6 +43,7 @@ export const YOUTUBE_DEFAULT_OPTIONS: YouTubePostOptionsValue = {
   privacyStatus: null,
   madeForKids: null,
   asShorts: false,
+  coverPath: null,
 };
 
 export const YOUTUBE_PRIVACY_LABELS: Record<YouTubePrivacyStatus, string> = {
@@ -60,6 +68,7 @@ export function parseYouTubeOptions(raw: unknown): YouTubePostOptionsValue {
     privacyStatus: isYouTubePrivacy(r["privacyStatus"]) ? r["privacyStatus"] : null,
     madeForKids: typeof r["madeForKids"] === "boolean" ? r["madeForKids"] : null,
     asShorts: r["asShorts"] === true,
+    coverPath: typeof r["coverPath"] === "string" && r["coverPath"] ? r["coverPath"] : null,
   };
 }
 
@@ -112,5 +121,29 @@ export function youtubePermalink(videoId: string, asShorts: boolean): string {
 /** ข้อความเตือนที่อยากให้ผู้ใช้เห็นก่อนกดโพสต์ */
 export function youtubeShortsNotice(value: YouTubePostOptionsValue): string | null {
   if (!value.asShorts) return null;
-  return "คลิปต้องเป็นแนวตั้ง 9:16 และยาวไม่เกิน 60 วินาที YouTube ถึงจะจัดให้เป็น Shorts";
+  return "คลิปต้องเป็นแนวตั้ง 9:16 และยาวไม่เกิน 3 นาที YouTube ถึงจะจัดให้เป็น Shorts";
+}
+
+/**
+ * ตรวจคลิปที่แนบมาว่าจะได้เป็น Shorts จริงไหม — คืนคำเตือน ถ้าไม่มีปัญหาคืน null
+ *
+ * เตือนอย่างเดียว ไม่บล็อก เพราะคลิปที่ไม่เข้าเกณฑ์ก็ยังลงเป็นวิดีโอปกติได้
+ */
+export function youtubeShortsWarning(
+  value: YouTubePostOptionsValue,
+  clip: { durationSec: number | null; width: number | null; height: number | null },
+): string | null {
+  if (!value.asShorts) return null;
+
+  if (clip.durationSec !== null && clip.durationSec > YOUTUBE_SHORTS_MAX_SECONDS) {
+    const m = Math.floor(clip.durationSec / 60);
+    const s = Math.round(clip.durationSec % 60);
+    return `คลิปยาว ${m}:${String(s).padStart(2, "0")} นาที — เกิน 3 นาที YouTube จะลงเป็นวิดีโอปกติ ไม่ใช่ Shorts`;
+  }
+
+  if (clip.width !== null && clip.height !== null && clip.width > clip.height) {
+    return `คลิปเป็นแนวนอน (${clip.width}×${clip.height}) — Shorts ต้องเป็นแนวตั้ง ถ้าลงแบบนี้จะกลายเป็นวิดีโอปกติ`;
+  }
+
+  return null;
 }

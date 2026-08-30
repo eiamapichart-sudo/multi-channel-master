@@ -387,6 +387,21 @@ async function publishToYouTube(
     remember,
   );
 
+  // รูปปก — ทำหลังคลิปขึ้นไปแล้ว ถ้าพลาดก็ไม่นับว่าโพสต์ล้มเหลว
+  // ช่องที่ยังไม่ยืนยันตัวตนกับ YouTube จะใช้ปกเองไม่ได้ (403) ซึ่งไม่ควรทำให้ทั้งโพสต์เป็น failed
+  if (choices.coverPath) {
+    try {
+      const [coverUrl] = await signMediaPaths([choices.coverPath]);
+      await yt.setVideoThumbnail(token, videoId, coverUrl!);
+    } catch (coverError) {
+      console.warn("[publish] ตั้งรูปปก YouTube ไม่สำเร็จ", coverError);
+      await updateWithRetry("post_targets", target.id, {
+        error_message:
+          "คลิปขึ้น YouTube แล้ว แต่ตั้งรูปปกไม่สำเร็จ — ช่องอาจยังไม่ได้ยืนยันตัวตน ตั้งปกเองในแอป YouTube ได้",
+      });
+    }
+  }
+
   return { postId: videoId, permalink: youtubePermalink(videoId, choices.asShorts) };
 }
 

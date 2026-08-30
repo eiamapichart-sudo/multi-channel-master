@@ -13,6 +13,7 @@
  * และแท็ก #Shorts ในชื่อหรือคำบรรยาย
  */
 import {
+  YOUTUBE_COVER_MAX_BYTES,
   YOUTUBE_MAX_VIDEO_BYTES,
   buildYouTubeDescription,
   type YouTubePostOptionsValue,
@@ -284,6 +285,51 @@ export async function uploadYouTubeVideo(
   if (!videoId) throw new YouTubeError("YouTube ไม่ได้ส่งรหัสคลิปกลับมา", 500);
 
   return { videoId };
+}
+
+/**
+ * ตั้งรูปปกของคลิป (custom thumbnail)
+ *
+ * ใช้ scope youtube.upload ที่เรามีอยู่แล้ว รับ JPEG/PNG ไม่เกิน 2MB
+ *
+ * ข้อควรรู้: ช่องที่ยังไม่ยืนยันตัวตนกับ YouTube จะใช้ปกเองไม่ได้ และได้ 403 กลับมา
+ * ฝั่งเรียกควรจับ error แล้วปล่อยผ่าน — คลิปขึ้นไปแล้ว ไม่ควรนับว่าโพสต์ล้มเหลวเพราะปก
+ */
+export async function setVideoThumbnail(
+  token: string,
+  videoId: string,
+  imageUrl: string,
+): Promise<void> {
+  const res = await fetch(imageUrl, { signal: withTimeout(UPLOAD_TIMEOUT_MS) });
+  if (!res.ok) throw new YouTubeError(`อ่านไฟล์รูปปกไม่สำเร็จ (HTTP ${res.status})`, res.status);
+
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.byteLength === 0) throw new YouTubeError("ไฟล์รูปปกว่างเปล่า", 400);
+  if (bytes.byteLength > YOUTUBE_COVER_MAX_BYTES) {
+    throw new YouTubeError(
+      `รูปปกใหญ่เกินไป (${Math.round(bytes.byteLength / 1024 / 1024)}MB) — YouTube รับไม่เกิน 2MB`,
+      413,
+    );
+  }
+
+  const mime = res.headers.get("content-type") ?? "image/jpeg";
+
+  const url = new URL("https://www.googleapis.com/upload/youtube/v3/thumbnails");
+  url.searchParams.set("videoId", videoId);
+  url.searchParams.set("uploadType", "media");
+
+  const put = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": mime,
+      "content-length": String(bytes.byteLength),
+    },
+    body: bytes as unknown as BodyInit,
+    signal: withTimeout(UPLOAD_TIMEOUT_MS),
+  });
+
+  await parseOrThrow(put, "ตั้งรูปปกคลิป YouTube");
 }
 
 export type YouTubeResumeState =

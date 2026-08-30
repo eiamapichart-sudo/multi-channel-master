@@ -41,6 +41,11 @@ export type TikTokPostOptionsValue = {
   brandContent: boolean;
   /** เนื้อหาสร้างหรือดัดแปลงด้วย AI */
   isAigc: boolean;
+  /**
+   * วินาทีที่ของคลิปที่จะใช้เป็นรูปปก (หน่วยมิลลิวินาที)
+   * TikTok ไม่เปิดให้อัปรูปปกเอง เลือกได้แค่เฟรมจากในคลิป
+   */
+  coverTimestampMs: number;
 };
 
 export const TIKTOK_DEFAULT_OPTIONS: TikTokPostOptionsValue = {
@@ -52,6 +57,7 @@ export const TIKTOK_DEFAULT_OPTIONS: TikTokPostOptionsValue = {
   brandOrganic: false,
   brandContent: false,
   isAigc: false,
+  coverTimestampMs: 0,
 };
 
 export const TIKTOK_PRIVACY_LABELS: Record<TikTokPrivacyLevel, string> = {
@@ -80,6 +86,10 @@ export function parseTikTokOptions(raw: unknown): TikTokPostOptionsValue {
     brandOrganic: bool("brandOrganic"),
     brandContent: bool("brandContent"),
     isAigc: bool("isAigc"),
+    coverTimestampMs:
+      typeof r["coverTimestampMs"] === "number" && Number.isFinite(r["coverTimestampMs"])
+        ? Math.max(0, Math.round(r["coverTimestampMs"] as number))
+        : 0,
   };
 }
 

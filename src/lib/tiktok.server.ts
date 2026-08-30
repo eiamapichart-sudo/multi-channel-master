@@ -286,6 +286,8 @@ function buildPostInfo(options: TikTokPostOptions) {
     brand_content_toggle: c?.disclose === true && c.brandContent === true,
     brand_organic_toggle: c?.disclose === true && c.brandOrganic === true,
     is_aigc: c?.isAigc === true,
+    // TikTok ให้เลือกได้แค่เฟรมจากในคลิป อัปรูปปกเองไม่ได้
+    video_cover_timestamp_ms: Math.max(0, Math.round(c?.coverTimestampMs ?? 0)),
   };
 }
 
