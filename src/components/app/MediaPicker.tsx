@@ -10,10 +10,16 @@ type Props = {
   disabled?: boolean;
 };
 
+/** เรียงชื่อไฟล์แบบธรรมชาติ: img2 มาก่อน img10 */
+const byNaturalName = (a: File, b: File) =>
+  a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+
 export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<MediaItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
