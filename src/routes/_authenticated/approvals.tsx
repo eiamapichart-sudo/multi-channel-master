@@ -151,11 +151,54 @@ function ApprovalsPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "เผยแพร่ไม่สำเร็จ"),
   });
 
-  const busy = decide.isPending || publishNow.isPending;
+  const busy = decide.isPending || publishNow.isPending || bulkDecide.isPending;
+
+  const pendingPosts = posts.filter((p) => p.status === "pending");
+  const pendingIds = pendingPosts.map((p) => p.id);
+  const selectedPending = selected.filter((id) => pendingIds.includes(id));
+  const allSelected = pendingIds.length > 0 && selectedPending.length === pendingIds.length;
+
+  const toggle = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
     <div className="space-y-4 pb-6">
       <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">คิวอนุมัติ</h1>
+
+      {pendingIds.length > 1 ? (
+        <div className="sticky top-2 z-10 space-y-2 rounded-2xl border border-border bg-card/95 p-3 backdrop-blur">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              รออนุมัติ {pendingIds.length} โพสต์ · เลือกแล้ว {selectedPending.length}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSelected(allSelected ? [] : pendingIds)}
+              className="text-xs font-semibold text-primary"
+            >
+              {allSelected ? "ล้างที่เลือก" : "เลือกทั้งหมด"}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              className="h-11 flex-1 rounded-xl font-semibold"
+              disabled={busy || selectedPending.length === 0}
+              onClick={() => bulkDecide.mutate({ ids: selectedPending, next: "approved" })}
+            >
+              อนุมัติที่เลือก ({selectedPending.length})
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 flex-1 rounded-xl"
+              disabled={busy || selectedPending.length === 0}
+              onClick={() => bulkDecide.mutate({ ids: selectedPending, next: "draft" })}
+            >
+              ตีกลับที่เลือก
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
 
       {isLoading ? (
         <p className="py-10 text-center text-sm text-muted-foreground">กำลังโหลด…</p>
