@@ -94,6 +94,26 @@ function ApprovalsPage() {
     queryClient.invalidateQueries({ queryKey: ["calendar"] });
   };
 
+  const bulkDecide = useMutation({
+    mutationFn: async ({ ids, next }: { ids: string[]; next: PostStatus }) => {
+      const patch =
+        next === "approved"
+          ? { status: next, approved_by: user?.id ?? null, approved_at: new Date().toISOString() }
+          : { status: next, approved_by: null, approved_at: null };
+      const { error } = await supabase.from("posts").update(patch).in("id", ids);
+      if (error) throw error;
+      return ids.length;
+    },
+    onSuccess: (count, { next }) => {
+      invalidate();
+      setSelected([]);
+      toast.success(
+        next === "approved" ? `อนุมัติแล้ว ${count} โพสต์` : `ตีกลับให้แก้ไข ${count} โพสต์`,
+      );
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "ดำเนินการไม่สำเร็จ"),
+  });
+
   const decide = useMutation({
     mutationFn: async ({ id, next }: { id: string; next: PostStatus }) => {
       const patch =
