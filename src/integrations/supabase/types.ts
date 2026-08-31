@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -239,12 +239,12 @@ export type Database = {
           override_body: string | null
           pending_external_id: string | null
           platform: Database["public"]["Enums"]["platform"]
-          tiktok_options: Json | null
-          youtube_options: Json | null
           post_id: string
           published_at: string | null
           status: Database["public"]["Enums"]["target_status"]
+          tiktok_options: Json | null
           updated_at: string
+          youtube_options: Json | null
         }
         Insert: {
           attempt_count?: number
@@ -258,12 +258,12 @@ export type Database = {
           override_body?: string | null
           pending_external_id?: string | null
           platform: Database["public"]["Enums"]["platform"]
-          tiktok_options: Json | null
-          youtube_options?: Json | null
           post_id: string
           published_at?: string | null
           status?: Database["public"]["Enums"]["target_status"]
+          tiktok_options?: Json | null
           updated_at?: string
+          youtube_options?: Json | null
         }
         Update: {
           attempt_count?: number
@@ -277,12 +277,12 @@ export type Database = {
           override_body?: string | null
           pending_external_id?: string | null
           platform?: Database["public"]["Enums"]["platform"]
-          tiktok_options?: Json | null
-          youtube_options?: Json | null
           post_id?: string
           published_at?: string | null
           status?: Database["public"]["Enums"]["target_status"]
+          tiktok_options?: Json | null
           updated_at?: string
+          youtube_options?: Json | null
         }
         Relationships: [
           {

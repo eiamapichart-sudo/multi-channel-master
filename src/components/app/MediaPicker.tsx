@@ -10,10 +10,16 @@ type Props = {
   disabled?: boolean;
 };
 
+/** เรียงชื่อไฟล์แบบธรรมชาติ: img2 มาก่อน img10 */
+const byNaturalName = (a: File, b: File) =>
+  a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+
 export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<MediaItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -41,7 +47,7 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
       toast.error("เลือกแบรนด์ก่อนอัปโหลด");
       return;
     }
-    const list = Array.from(files);
+    const list = Array.from(files).sort(byNaturalName);
     const kinds = new Set(list.map((f) => (f.type.startsWith("video/") ? "video" : "image")));
     if (kinds.size > 1) {
       toast.error("โพสต์เดียวกันผสมรูปกับวิดีโอไม่ได้ — เลือกรูปทั้งหมด หรือวิดีโอทั้งหมด");
@@ -76,14 +82,15 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
     void removeMedia(path);
   };
 
-  const move = (index: number, delta: number) => {
-    const target = index + delta;
-    if (target < 0 || target >= paths.length) return;
+  const reorder = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= paths.length) return;
     const next = [...paths];
-    const [moved] = next.splice(index, 1);
-    next.splice(target, 0, moved!);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved!);
     onChange(next);
   };
+
+  const move = (index: number, delta: number) => reorder(index, index + delta);
 
   return (
     <div className="space-y-3">
@@ -100,12 +107,41 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
         {items.map((item, index) => (
           <div
             key={item.path}
-            className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-secondary"
+            draggable={!disabled && items.length > 1}
+            onDragStart={() => setDragIndex(index)}
+            onDragOver={(e) => {
+              if (dragIndex === null) return;
+              e.preventDefault();
+              setOverIndex(index);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragIndex !== null) reorder(dragIndex, index);
+              setDragIndex(null);
+              setOverIndex(null);
+            }}
+            onDragEnd={() => {
+              setDragIndex(null);
+              setOverIndex(null);
+            }}
+            className={`relative aspect-square overflow-hidden rounded-2xl border bg-secondary transition-all ${
+              dragIndex === index
+                ? "border-primary opacity-50"
+                : overIndex === index && dragIndex !== null
+                  ? "border-primary ring-2 ring-primary"
+                  : "border-border"
+            } ${!disabled && items.length > 1 ? "cursor-grab active:cursor-grabbing" : ""}`}
           >
             {item.kind === "video" ? (
-              <video src={item.url} className="size-full object-cover" muted playsInline />
+              <video src={item.url} className="pointer-events-none size-full object-cover" muted playsInline />
             ) : (
-              <img src={item.url} alt={`สื่อลำดับที่ ${index + 1}`} className="size-full object-cover" loading="lazy" />
+              <img
+                src={item.url}
+                alt={`สื่อลำดับที่ ${index + 1}`}
+                className="pointer-events-none size-full object-cover"
+                loading="lazy"
+                draggable={false}
+              />
             )}
             {items.length > 1 ? (
               <span className="absolute left-1.5 top-1.5 flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow">
@@ -175,7 +211,8 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
 
       {!disabled ? (
         <p className="text-xs text-muted-foreground">
-          ตัวเลขบนรูปคือลำดับที่จะโพสต์ในอัลบัม (กด ← → เพื่อสลับลำดับ) • หนึ่งโพสต์เลือกได้เฉพาะรูปทั้งหมด
+          ตัวเลขบนรูปคือลำดับที่จะโพสต์ในอัลบัม — ลากรูปสลับตำแหน่งได้ (บนมือถือกด ← →) •
+          ไฟล์ใหม่จะเรียงตามชื่อ/เลขน้อยไปมากให้อัตโนมัติ • หนึ่งโพสต์เลือกได้เฉพาะรูปทั้งหมด
           หรือวิดีโอทั้งหมด • ไฟล์ละไม่เกิน 50MB
         </p>
       ) : null}

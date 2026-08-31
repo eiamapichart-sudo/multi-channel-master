@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ExternalLink, Loader2 } from "lucide-react";
@@ -52,6 +53,8 @@ function ApprovalsPage() {
   const { brandId, brands, isAll, brandName } = useBrand();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<string[]>([]);
+
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["all-channels"],
@@ -94,6 +97,26 @@ function ApprovalsPage() {
     queryClient.invalidateQueries({ queryKey: ["calendar"] });
   };
 
+  const bulkDecide = useMutation({
+    mutationFn: async ({ ids, next }: { ids: string[]; next: PostStatus }) => {
+      const patch =
+        next === "approved"
+          ? { status: next, approved_by: user?.id ?? null, approved_at: new Date().toISOString() }
+          : { status: next, approved_by: null, approved_at: null };
+      const { error } = await supabase.from("posts").update(patch).in("id", ids);
+      if (error) throw error;
+      return ids.length;
+    },
+    onSuccess: (count, { next }) => {
+      invalidate();
+      setSelected([]);
+      toast.success(
+        next === "approved" ? `อนุมัติแล้ว ${count} โพสต์` : `ตีกลับให้แก้ไข ${count} โพสต์`,
+      );
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "ดำเนินการไม่สำเร็จ"),
+  });
+
   const decide = useMutation({
     mutationFn: async ({ id, next }: { id: string; next: PostStatus }) => {
       const patch =
@@ -129,11 +152,54 @@ function ApprovalsPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "เผยแพร่ไม่สำเร็จ"),
   });
 
-  const busy = decide.isPending || publishNow.isPending;
+  const busy = decide.isPending || publishNow.isPending || bulkDecide.isPending;
+
+  const pendingPosts = posts.filter((p) => p.status === "pending");
+  const pendingIds = pendingPosts.map((p) => p.id);
+  const selectedPending = selected.filter((id) => pendingIds.includes(id));
+  const allSelected = pendingIds.length > 0 && selectedPending.length === pendingIds.length;
+
+  const toggle = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
     <div className="space-y-4 pb-6">
       <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">คิวอนุมัติ</h1>
+
+      {pendingIds.length > 1 ? (
+        <div className="sticky top-2 z-10 space-y-2 rounded-2xl border border-border bg-card/95 p-3 backdrop-blur">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              รออนุมัติ {pendingIds.length} โพสต์ · เลือกแล้ว {selectedPending.length}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSelected(allSelected ? [] : pendingIds)}
+              className="text-xs font-semibold text-primary"
+            >
+              {allSelected ? "ล้างที่เลือก" : "เลือกทั้งหมด"}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              className="h-11 flex-1 rounded-xl font-semibold"
+              disabled={busy || selectedPending.length === 0}
+              onClick={() => bulkDecide.mutate({ ids: selectedPending, next: "approved" })}
+            >
+              อนุมัติที่เลือก ({selectedPending.length})
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 flex-1 rounded-xl"
+              disabled={busy || selectedPending.length === 0}
+              onClick={() => bulkDecide.mutate({ ids: selectedPending, next: "draft" })}
+            >
+              ตีกลับที่เลือก
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
 
       {isLoading ? (
         <p className="py-10 text-center text-sm text-muted-foreground">กำลังโหลด…</p>
@@ -147,8 +213,22 @@ function ApprovalsPage() {
             const isPublishingThis = publishNow.isPending && publishNow.variables === post.id;
 
             return (
-              <li key={post.id} className="rounded-2xl border border-border bg-card p-4">
+              <li
+                key={post.id}
+                className={`rounded-2xl border bg-card p-4 ${
+                  selected.includes(post.id) ? "border-primary ring-1 ring-primary" : "border-border"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
+                  {post.status === "pending" && pendingIds.length > 1 ? (
+                    <input
+                      type="checkbox"
+                      aria-label="เลือกโพสต์นี้เพื่ออนุมัติหรือตีกลับพร้อมกัน"
+                      checked={selected.includes(post.id)}
+                      onChange={() => toggle(post.id)}
+                      className="mt-0.5 size-5 shrink-0 accent-[hsl(var(--primary))]"
+                    />
+                  ) : null}
                   <p className="min-w-0 flex-1 font-display text-sm font-semibold text-foreground">
                     {post.title?.trim() || post.body.slice(0, 60) || "ไม่มีหัวข้อ"}
                   </p>
