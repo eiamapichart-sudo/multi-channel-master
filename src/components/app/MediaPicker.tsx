@@ -82,14 +82,15 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
     void removeMedia(path);
   };
 
-  const move = (index: number, delta: number) => {
-    const target = index + delta;
-    if (target < 0 || target >= paths.length) return;
+  const reorder = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= paths.length) return;
     const next = [...paths];
-    const [moved] = next.splice(index, 1);
-    next.splice(target, 0, moved!);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved!);
     onChange(next);
   };
+
+  const move = (index: number, delta: number) => reorder(index, index + delta);
 
   return (
     <div className="space-y-3">
