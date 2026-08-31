@@ -47,7 +47,7 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
       toast.error("เลือกแบรนด์ก่อนอัปโหลด");
       return;
     }
-    const list = Array.from(files);
+    const list = Array.from(files).sort(byNaturalName);
     const kinds = new Set(list.map((f) => (f.type.startsWith("video/") ? "video" : "image")));
     if (kinds.size > 1) {
       toast.error("โพสต์เดียวกันผสมรูปกับวิดีโอไม่ได้ — เลือกรูปทั้งหมด หรือวิดีโอทั้งหมด");
