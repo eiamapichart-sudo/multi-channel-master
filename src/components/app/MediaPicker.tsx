@@ -107,12 +107,41 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
         {items.map((item, index) => (
           <div
             key={item.path}
-            className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-secondary"
+            draggable={!disabled && items.length > 1}
+            onDragStart={() => setDragIndex(index)}
+            onDragOver={(e) => {
+              if (dragIndex === null) return;
+              e.preventDefault();
+              setOverIndex(index);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragIndex !== null) reorder(dragIndex, index);
+              setDragIndex(null);
+              setOverIndex(null);
+            }}
+            onDragEnd={() => {
+              setDragIndex(null);
+              setOverIndex(null);
+            }}
+            className={`relative aspect-square overflow-hidden rounded-2xl border bg-secondary transition-all ${
+              dragIndex === index
+                ? "border-primary opacity-50"
+                : overIndex === index && dragIndex !== null
+                  ? "border-primary ring-2 ring-primary"
+                  : "border-border"
+            } ${!disabled && items.length > 1 ? "cursor-grab active:cursor-grabbing" : ""}`}
           >
             {item.kind === "video" ? (
-              <video src={item.url} className="size-full object-cover" muted playsInline />
+              <video src={item.url} className="pointer-events-none size-full object-cover" muted playsInline />
             ) : (
-              <img src={item.url} alt={`สื่อลำดับที่ ${index + 1}`} className="size-full object-cover" loading="lazy" />
+              <img
+                src={item.url}
+                alt={`สื่อลำดับที่ ${index + 1}`}
+                className="pointer-events-none size-full object-cover"
+                loading="lazy"
+                draggable={false}
+              />
             )}
             {items.length > 1 ? (
               <span className="absolute left-1.5 top-1.5 flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow">
