@@ -45,7 +45,7 @@ type Props = {
   draft: PostDraft;
   brandId: string | null;
   accounts: ChannelAccount[];
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   onChange: (patch: Partial<PostDraft>) => void;
 };
 
@@ -87,7 +87,7 @@ export function PostDraftEditor({ draft, brandId, accounts, disabled, onChange }
           brandId={brandId}
           paths={draft.mediaPaths}
           onChange={(paths) => onChange({ mediaPaths: paths })}
-          disabled={disabled}
+          disabled={disabled ?? false}
         />
       </section>
 
