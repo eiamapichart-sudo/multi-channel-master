@@ -3,31 +3,29 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles } from "lucide-react";
+import { Copy, Plus, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useBrand } from "@/hooks/useBrand";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { MediaPicker } from "@/components/app/MediaPicker";
-import { TikTokPostOptions } from "@/components/app/TikTokPostOptions";
-import { YouTubePostOptions } from "@/components/app/YouTubePostOptions";
-import { useClipInfo } from "@/lib/use-clip-info";
+import {
+  PostDraftEditor,
+  draftCharLimit,
+  draftPlatformSet,
+  type ChannelAccount,
+  type PostDraft,
+} from "@/components/app/PostDraftEditor";
 import {
   TIKTOK_DEFAULT_OPTIONS,
   parseTikTokOptions,
   validateTikTokOptions,
-  type TikTokPostOptionsValue,
 } from "@/lib/tiktok-options";
 import {
   YOUTUBE_DEFAULT_OPTIONS,
   parseYouTubeOptions,
   validateYouTubeOptions,
-  type YouTubePostOptionsValue,
 } from "@/lib/youtube-options";
 import {
-  PLATFORMS,
   STATUS_META,
   isoToLocalInput,
   localInputToIso,
@@ -45,12 +43,12 @@ export const Route = createFileRoute("/_authenticated/compose")({
       {
         name: "description",
         content:
-          "เขียนโพสต์ครั้งเดียว แนบรูปหรือคลิปจากเครื่องเป็นอัลบัม เลือกหลายเพจหลายช่องทาง และตั้งเวลาล่วงหน้า",
+          "เขียนหลายโพสต์ในรอบเดียว แนบรูปหรือคลิปเป็นอัลบัม เลือกหลายเพจหลายช่องทาง ตั้งเวลาแต่ละโพสต์ แล้วส่งอนุมัติทีเดียว",
       },
       { property: "og:title", content: "สร้างโพสต์ — Social Post" },
       {
         property: "og:description",
-        content: "เขียนครั้งเดียว แนบอัลบัม เลือกหลายเพจ ตั้งเวลา แล้วส่งเข้าคิวอนุมัติ",
+        content: "เขียนหลายโพสต์ในรอบเดียว เลือกหลายเพจ ตั้งเวลา แล้วส่งเข้าคิวอนุมัติพร้อมกัน",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -59,7 +57,19 @@ export const Route = createFileRoute("/_authenticated/compose")({
   component: ComposePage,
 });
 
-type ChannelAccount = { id: string; platform: Platform; account_name: string };
+let draftSeq = 0;
+const newDraft = (base?: Partial<PostDraft>): PostDraft => ({
+  key: `draft-${++draftSeq}`,
+  title: "",
+  body: "",
+  mediaPaths: [],
+  scheduledAt: "",
+  accountIds: [],
+  platforms: [],
+  tiktokOptions: TIKTOK_DEFAULT_OPTIONS,
+  youtubeOptions: YOUTUBE_DEFAULT_OPTIONS,
+  ...base,
+});
 
 function ComposePage() {
   const { id } = Route.useSearch();
@@ -68,17 +78,9 @@ function ComposePage() {
   const queryClient = useQueryClient();
 
   const [draftBrand, setDraftBrand] = useState<string | null>(brandId);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [mediaPaths, setMediaPaths] = useState<string[]>([]);
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [accountIds, setAccountIds] = useState<string[]>([]);
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [status, setStatus] = useState<PostStatus>("draft");
-  const [tiktokOptions, setTiktokOptions] =
-    useState<TikTokPostOptionsValue>(TIKTOK_DEFAULT_OPTIONS);
-  const [youtubeOptions, setYoutubeOptions] =
-    useState<YouTubePostOptionsValue>(YOUTUBE_DEFAULT_OPTIONS);
+  const [drafts, setDrafts] = useState<PostDraft[]>([newDraft()]);
+  const [activeKey, setActiveKey] = useState<string>(() => drafts[0]!.key);
 
   useEffect(() => {
     if (brandId) setDraftBrand(brandId);
@@ -118,10 +120,6 @@ function ComposePage() {
 
   useEffect(() => {
     if (!post) return;
-    setTitle(post.title ?? "");
-    setBody(post.body ?? "");
-    setMediaPaths((post.media_urls as string[] | null) ?? []);
-    setScheduledAt(isoToLocalInput(post.scheduled_at));
     setStatus(post.status as PostStatus);
     setDraftBrand(post.brand_id);
     const targets = (post.post_targets ?? []) as {
@@ -130,119 +128,145 @@ function ComposePage() {
       tiktok_options?: unknown;
       youtube_options?: unknown;
     }[];
-    setAccountIds(targets.map((t) => t.channel_account_id).filter((v): v is string => !!v));
-    setPlatforms([...new Set(targets.filter((t) => !t.channel_account_id).map((t) => t.platform))]);
-    // ตัวเลือก TikTok เก็บไว้ที่ target ของ TikTok — ดึงกลับมาแสดงตอนแก้ไขโพสต์เดิม
     const savedTikTok = targets.find((t) => t.platform === "tiktok" && t.tiktok_options);
-    setTiktokOptions(
-      savedTikTok ? parseTikTokOptions(savedTikTok.tiktok_options) : TIKTOK_DEFAULT_OPTIONS,
-    );
-    // ตัวเลือก YouTube เก็บไว้ที่ target ของ YouTube — ดึงกลับมาแสดงตอนแก้ไขโพสต์เดิม
     const savedYouTube = targets.find((t) => t.platform === "youtube" && t.youtube_options);
-    setYoutubeOptions(
-      savedYouTube ? parseYouTubeOptions(savedYouTube.youtube_options) : YOUTUBE_DEFAULT_OPTIONS,
-    );
+    const loaded = newDraft({
+      title: post.title ?? "",
+      body: post.body ?? "",
+      mediaPaths: (post.media_urls as string[] | null) ?? [],
+      scheduledAt: isoToLocalInput(post.scheduled_at),
+      accountIds: targets.map((t) => t.channel_account_id).filter((v): v is string => !!v),
+      platforms: [...new Set(targets.filter((t) => !t.channel_account_id).map((t) => t.platform))],
+      tiktokOptions: savedTikTok
+        ? parseTikTokOptions(savedTikTok.tiktok_options)
+        : TIKTOK_DEFAULT_OPTIONS,
+      youtubeOptions: savedYouTube
+        ? parseYouTubeOptions(savedYouTube.youtube_options)
+        : YOUTUBE_DEFAULT_OPTIONS,
+    });
+    setDrafts([loaded]);
+    setActiveKey(loaded.key);
   }, [post]);
 
   const locked = status === "published" || status === "publishing";
+  const multi = !id;
 
-  // อ่านความยาว/ขนาดภาพของคลิป ใช้เตือนเรื่อง Shorts และให้เลือกเฟรมปกของ TikTok
-  const clip = useClipInfo(mediaPaths);
+  const patchDraft = (key: string, patch: Partial<PostDraft>) =>
+    setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 
-  const selectedPlatformSet = new Set<Platform>([
-    ...platforms,
-    ...accounts.filter((a) => accountIds.includes(a.id)).map((a) => a.platform),
-  ]);
+  const addDraft = (base?: PostDraft) => {
+    // คัดลอกโพสต์: ยกช่องทาง/ตัวเลือกมาด้วย เพื่อไม่ต้องเลือกซ้ำ แต่ได้ key ใหม่เสมอ
+    const created = base ? { ...newDraft(), ...base, key: newDraft().key } : newDraft();
+    setDrafts((prev) => [...prev, created]);
+    setActiveKey(created.key);
+  };
 
-  // บัญชี TikTok ที่ถูกเลือกอยู่ — ใช้ดึงตัวเลือกความเป็นส่วนตัวที่บัญชีนั้นใช้ได้จริง
-  const tiktokAccountId =
-    accounts.find((a) => a.platform === "tiktok" && accountIds.includes(a.id))?.id ?? null;
-  const tiktokSelected = selectedPlatformSet.has("tiktok");
+  const removeDraft = (key: string) =>
+    setDrafts((prev) => {
+      const next = prev.filter((d) => d.key !== key);
+      const list = next.length ? next : [newDraft()];
+      setActiveKey(list[Math.max(0, list.length - 1)]!.key);
+      return list;
+    });
 
-  // ช่อง YouTube ที่ถูกเลือกอยู่ — ใช้แสดงชื่อช่องในแผงตัวเลือก
-  const youtubeAccountName =
-    accounts.find((a) => a.platform === "youtube" && accountIds.includes(a.id))?.account_name ??
-    null;
-  const youtubeSelected = selectedPlatformSet.has("youtube");
+  const validateDraft = (draft: PostDraft, index: number, nextStatus: PostStatus) => {
+    const label = `โพสต์ที่ ${index + 1}`;
+    if (!draft.body.trim() && draft.mediaPaths.length === 0)
+      throw new Error(`${label}: ใส่เนื้อหาหรือแนบสื่ออย่างน้อย 1 อย่าง`);
+    if (draft.accountIds.length === 0 && draft.platforms.length === 0)
+      throw new Error(`${label}: เลือกช่องทางอย่างน้อย 1 ช่องทาง`);
+    if (draft.body.length > draftCharLimit(draft, accounts))
+      throw new Error(`${label}: เนื้อหายาวเกินขีดจำกัดของช่องทางที่เลือก`);
+    const set = draftPlatformSet(draft, accounts);
+    if (nextStatus !== "draft" && set.has("tiktok")) {
+      const problem = validateTikTokOptions(draft.tiktokOptions);
+      if (problem) throw new Error(`${label} · TikTok: ${problem}`);
+    }
+    if (nextStatus !== "draft" && set.has("youtube")) {
+      const problem = validateYouTubeOptions(draft.youtubeOptions);
+      if (problem) throw new Error(`${label} · YouTube: ${problem}`);
+    }
+  };
 
   const save = useMutation({
     mutationFn: async (nextStatus: PostStatus) => {
       if (!activeBrand) throw new Error("กรุณาเลือกแบรนด์ก่อน");
-      if (!body.trim() && mediaPaths.length === 0)
-        throw new Error("ใส่เนื้อหาหรือแนบสื่ออย่างน้อย 1 อย่าง");
-      if (accountIds.length === 0 && platforms.length === 0)
-        throw new Error("เลือกช่องทางอย่างน้อย 1 ช่องทาง");
+      drafts.forEach((draft, i) => validateDraft(draft, i, nextStatus));
 
-      // TikTok บังคับให้ผู้ใช้เลือกตัวเลือกเองก่อนโพสต์ — กันไว้ตั้งแต่ตอนบันทึก
-      if (tiktokSelected && nextStatus !== "draft") {
-        const problem = validateTikTokOptions(tiktokOptions);
-        if (problem) throw new Error(`TikTok: ${problem}`);
-      }
+      const saveOne = async (draft: PostDraft, postId?: string) => {
+        const payload = {
+          brand_id: activeBrand,
+          title: draft.title.trim() || null,
+          body: draft.body.trim(),
+          media_url: draft.mediaPaths[0] ?? null,
+          media_urls: draft.mediaPaths,
+          scheduled_at: localInputToIso(draft.scheduledAt),
+          status: nextStatus,
+        };
 
-      // YouTube บังคับให้มีชื่อคลิป และต้องเลือกความเป็นส่วนตัวกับป้ายทำเพื่อเด็กเอง
-      if (youtubeSelected && nextStatus !== "draft") {
-        const problem = validateYouTubeOptions(youtubeOptions);
-        if (problem) throw new Error(`YouTube: ${problem}`);
-      }
+        let savedId = postId;
+        if (savedId) {
+          const { error } = await supabase.from("posts").update(payload).eq("id", savedId);
+          if (error) throw error;
+          const { error: delError } = await supabase
+            .from("post_targets")
+            .delete()
+            .eq("post_id", savedId);
+          if (delError) throw delError;
+        } else {
+          const { data, error } = await supabase
+            .from("posts")
+            .insert(payload)
+            .select("id")
+            .single();
+          if (error) throw error;
+          savedId = data.id;
+        }
 
-      const payload = {
-        brand_id: activeBrand,
-        title: title.trim() || null,
-        body: body.trim(),
-        media_url: mediaPaths[0] ?? null,
-        media_urls: mediaPaths,
-        scheduled_at: localInputToIso(scheduledAt),
-        status: nextStatus,
+        const set = draftPlatformSet(draft, accounts);
+        const ttOptions = set.has("tiktok") ? draft.tiktokOptions : null;
+        const ytOptions = set.has("youtube") ? draft.youtubeOptions : null;
+        const rows = [
+          ...accounts
+            .filter((a) => draft.accountIds.includes(a.id))
+            .map((a) => ({
+              post_id: savedId!,
+              platform: a.platform,
+              channel_account_id: a.id,
+              tiktok_options: a.platform === "tiktok" ? ttOptions : null,
+              youtube_options: a.platform === "youtube" ? ytOptions : null,
+            })),
+          ...draft.platforms.map((platform) => ({
+            post_id: savedId!,
+            platform,
+            channel_account_id: null,
+            tiktok_options: platform === "tiktok" ? ttOptions : null,
+            youtube_options: platform === "youtube" ? ytOptions : null,
+          })),
+        ];
+        const { error: targetError } = await supabase.from("post_targets").insert(rows);
+        if (targetError) throw targetError;
+        return savedId!;
       };
 
-      let postId = id;
-      if (postId) {
-        const { error } = await supabase.from("posts").update(payload).eq("id", postId);
-        if (error) throw error;
-        const { error: delError } = await supabase
-          .from("post_targets")
-          .delete()
-          .eq("post_id", postId);
-        if (delError) throw delError;
-      } else {
-        const { data, error } = await supabase.from("posts").insert(payload).select("id").single();
-        if (error) throw error;
-        postId = data.id;
+      if (id) {
+        await saveOne(drafts[0]!, id);
+        return 1;
       }
-
-      // แนบตัวเลือก TikTok เฉพาะแถวของ TikTok ช่องทางอื่นไม่ใช้คอลัมน์นี้
-      const ttOptions = tiktokSelected ? tiktokOptions : null;
-      const ytOptions = youtubeSelected ? youtubeOptions : null;
-      const rows = [
-        ...accounts
-          .filter((a) => accountIds.includes(a.id))
-          .map((a) => ({
-            post_id: postId!,
-            platform: a.platform,
-            channel_account_id: a.id,
-            tiktok_options: a.platform === "tiktok" ? ttOptions : null,
-            youtube_options: a.platform === "youtube" ? ytOptions : null,
-          })),
-        ...platforms.map((platform) => ({
-          post_id: postId!,
-          platform,
-          channel_account_id: null,
-          tiktok_options: platform === "tiktok" ? ttOptions : null,
-          youtube_options: platform === "youtube" ? ytOptions : null,
-        })),
-      ];
-
-      const { error: targetError } = await supabase.from("post_targets").insert(rows);
-      if (targetError) throw targetError;
-
-      return postId!;
+      // บันทึกทีละใบตามลำดับ เพื่อให้ข้อความผิดพลาดชี้ชัดว่าใบไหนมีปัญหา
+      for (const draft of drafts) await saveOne(draft);
+      return drafts.length;
     },
-    onSuccess: (postId, nextStatus) => {
+    onSuccess: (count, nextStatus) => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["post", postId] });
+      queryClient.invalidateQueries({ queryKey: ["post", id] });
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
       queryClient.invalidateQueries({ queryKey: ["calendar"] });
-      toast.success(nextStatus === "pending" ? "ส่งขออนุมัติแล้ว" : "บันทึกร่างแล้ว");
+      toast.success(
+        nextStatus === "pending"
+          ? `ส่งขออนุมัติแล้ว ${count} โพสต์`
+          : `บันทึกร่างแล้ว ${count} โพสต์`,
+      );
       navigate({ to: "/" });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "บันทึกไม่สำเร็จ"),
@@ -262,28 +286,16 @@ function ComposePage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "ลบไม่สำเร็จ"),
   });
 
-  const toggleAccount = (accountId: string) =>
-    setAccountIds((prev) =>
-      prev.includes(accountId) ? prev.filter((p) => p !== accountId) : [...prev, accountId],
-    );
+  const active = drafts.find((d) => d.key === activeKey) ?? drafts[0]!;
 
-  const togglePlatform = (platform: Platform) =>
-    setPlatforms((prev) =>
-      prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform],
-    );
-
-  const tightestLimit = Math.min(
-    ...(selectedPlatformSet.size
-      ? [...selectedPlatformSet].map((p) => PLATFORMS.find((x) => x.id === p)!.limit)
-      : [PLATFORMS[0]!.limit]),
-  );
-  const over = body.length > tightestLimit;
+  const draftSummary = (draft: PostDraft) =>
+    draft.title.trim() || draft.body.trim().slice(0, 24) || "ยังว่าง";
 
   return (
     <div className="space-y-6 pb-8">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-          {id ? "แก้ไขโพสต์" : "โพสต์ใหม่"}
+          {id ? "แก้ไขโพสต์" : drafts.length > 1 ? `โพสต์ใหม่ ${drafts.length} ใบ` : "โพสต์ใหม่"}
         </h1>
         <span
           className={`rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_META[status].className}`}
@@ -300,7 +312,7 @@ function ComposePage() {
             value={activeBrand ?? ""}
             onChange={(e) => {
               setDraftBrand(e.target.value);
-              setAccountIds([]);
+              setDrafts((prev) => prev.map((d) => ({ ...d, accountIds: [] })));
               if (!brandId) setBrandId(null);
             }}
             disabled={locked}
@@ -315,168 +327,76 @@ function ComposePage() {
         </div>
       ) : null}
 
-      <section className="space-y-2">
-        <Label>รูปและคลิป</Label>
-        <MediaPicker
-          brandId={activeBrand}
-          paths={mediaPaths}
-          onChange={setMediaPaths}
-          disabled={locked}
-        />
-      </section>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="body">เนื้อหาโพสต์</Label>
-        <Textarea
-          id="body"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={7}
-          placeholder="เขียนครั้งเดียว ส่งออกทุกช่องทางที่เลือก ✨"
-          disabled={locked}
-          className="rounded-2xl text-base"
-        />
-        <p className={`text-xs ${over ? "text-destructive" : "text-muted-foreground"}`}>
-          {body.length.toLocaleString("th-TH")} / {tightestLimit.toLocaleString("th-TH")} ตัวอักษร
-          (จำกัดตามช่องทางที่สั้นสุด)
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="title">หัวข้อภายใน (ไม่ส่งออก)</Label>
-        <Input
-          id="title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="เช่น โปรโมชันสงกรานต์"
-          disabled={locked}
-          className="rounded-xl"
-        />
-      </div>
-
-      <fieldset className="space-y-3" disabled={locked}>
-        <legend className="text-sm font-semibold text-foreground">ช่องทางที่จะส่งออก</legend>
-        <div className="space-y-4">
-          {PLATFORMS.map((platform) => {
-            const pageAccounts = accounts.filter((a) => a.platform === platform.id);
-            const platformOn = selectedPlatformSet.has(platform.id);
-            return (
-              <div
-                key={platform.id}
-                className={`rounded-2xl border p-3 transition-colors ${
-                  platformOn ? "border-primary/60 bg-primary/5" : "border-border bg-card"
+      {multi ? (
+        <div className="space-y-2 rounded-2xl border border-border bg-card p-3">
+          <p className="text-xs text-muted-foreground">
+            เขียนได้หลายโพสต์ในรอบเดียว — แต่ละใบเลือกช่องทางและเวลาของตัวเองได้ ส่งอนุมัติทีเดียว
+            ผู้อนุมัติจะเลือกอนุมัติหรือตีกลับเฉพาะใบที่ต้องการได้
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {drafts.map((draft, i) => (
+              <button
+                key={draft.key}
+                type="button"
+                onClick={() => setActiveKey(draft.key)}
+                className={`shrink-0 rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                  draft.key === active.key
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border bg-background text-muted-foreground"
                 }`}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-foreground">
-                      {platform.label}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">{platform.note}</span>
-                  </span>
-                  {pageAccounts.length === 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => togglePlatform(platform.id)}
-                      aria-pressed={platforms.includes(platform.id)}
-                      className={`size-6 shrink-0 rounded-full border-2 transition-colors ${
-                        platforms.includes(platform.id)
-                          ? "border-primary bg-primary"
-                          : "border-input"
-                      }`}
-                    />
-                  ) : (
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                      {pageAccounts.filter((a) => accountIds.includes(a.id)).length}/
-                      {pageAccounts.length}
-                    </span>
-                  )}
-                </div>
-
-                {pageAccounts.length > 0 ? (
-                  <ul className="mt-3 space-y-1.5">
-                    {pageAccounts.map((account) => {
-                      const on = accountIds.includes(account.id);
-                      return (
-                        <li key={account.id}>
-                          <button
-                            type="button"
-                            onClick={() => toggleAccount(account.id)}
-                            aria-pressed={on}
-                            className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
-                              on
-                                ? "border-primary bg-primary/10 text-foreground"
-                                : "border-border bg-background text-muted-foreground"
-                            }`}
-                          >
-                            <span className="truncate">{account.account_name}</span>
-                            <span
-                              className={`size-5 shrink-0 rounded-full border-2 ${
-                                on ? "border-primary bg-primary" : "border-input"
-                              }`}
-                            />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : null}
-              </div>
-            );
-          })}
+                <span className="block font-semibold">โพสต์ {i + 1}</span>
+                <span className="block max-w-28 truncate">{draftSummary(draft)}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => addDraft()}
+              className="flex shrink-0 items-center gap-1 rounded-xl border border-dashed border-primary/60 px-3 py-2 text-xs font-semibold text-primary"
+            >
+              <Plus className="size-3.5" /> เพิ่มโพสต์
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 flex-1 rounded-xl text-xs"
+              onClick={() => addDraft(active)}
+            >
+              <Copy className="mr-1 size-3.5" /> คัดลอกโพสต์นี้
+            </Button>
+            {drafts.length > 1 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9 rounded-xl text-xs text-destructive hover:text-destructive"
+                onClick={() => removeDraft(active.key)}
+              >
+                <Trash2 className="mr-1 size-3.5" /> ลบใบนี้
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <p className="flex items-start gap-2 text-xs text-muted-foreground">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0 text-accent" />
-          เพิ่มเพจได้หลายเพจต่อช่องทางที่หน้าตั้งค่า แล้วเลือกส่งพร้อมกันได้เลย
-        </p>
-      </fieldset>
-
-      {tiktokSelected ? (
-        <section className="space-y-2">
-          <TikTokPostOptions
-            channelAccountId={tiktokAccountId}
-            clip={clip}
-            value={tiktokOptions}
-            onChange={setTiktokOptions}
-          />
-        </section>
       ) : null}
 
-      {youtubeSelected ? (
-        <section className="space-y-2">
-          <YouTubePostOptions
-            accountName={youtubeAccountName}
-            brandId={activeBrand}
-            clip={clip}
-            value={youtubeOptions}
-            onChange={setYoutubeOptions}
-          />
-        </section>
-      ) : null}
-
-      <div className="space-y-1.5">
-        <Label htmlFor="schedule">เวลาเผยแพร่ (เวลาไทย)</Label>
-        <Input
-          id="schedule"
-          type="datetime-local"
-          value={scheduledAt}
-          onChange={(e) => setScheduledAt(e.target.value)}
-          disabled={locked}
-          className="rounded-xl"
-        />
-        <p className="text-xs text-muted-foreground">
-          เว้นว่างได้ถ้ายังไม่กำหนดเวลา — โพสต์จะรออยู่ในคิวหลังอนุมัติ
-        </p>
-      </div>
+      <PostDraftEditor
+        key={active.key}
+        draft={active}
+        brandId={activeBrand}
+        accounts={accounts}
+        disabled={locked}
+        onChange={(patch) => patchDraft(active.key, patch)}
+      />
 
       {!locked ? (
         <div className="flex flex-col gap-2 pt-1">
           <Button
             className="h-12 rounded-xl text-base font-semibold"
             onClick={() => save.mutate("pending")}
-            disabled={save.isPending || over}
+            disabled={save.isPending}
           >
-            ส่งขออนุมัติ
+            {drafts.length > 1 ? `ส่งขออนุมัติทั้ง ${drafts.length} โพสต์` : "ส่งขออนุมัติ"}
           </Button>
           <Button
             variant="outline"
