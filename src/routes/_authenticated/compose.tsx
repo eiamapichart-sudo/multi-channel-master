@@ -155,10 +155,8 @@ function ComposePage() {
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 
   const addDraft = (base?: PostDraft) => {
-    const created = base
-      ? newDraft({ ...base, key: undefined as unknown as string })
-      : newDraft({ platforms: [], accountIds: [] });
-    // คัดลอกโพสต์: ยกช่องทาง/ตัวเลือกมาด้วย เพื่อไม่ต้องเลือกซ้ำ
+    // คัดลอกโพสต์: ยกช่องทาง/ตัวเลือกมาด้วย เพื่อไม่ต้องเลือกซ้ำ แต่ได้ key ใหม่เสมอ
+    const created = base ? { ...newDraft(), ...base, key: newDraft().key } : newDraft();
     setDrafts((prev) => [...prev, created]);
     setActiveKey(created.key);
   };
