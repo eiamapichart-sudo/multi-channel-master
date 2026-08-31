@@ -212,8 +212,22 @@ function ApprovalsPage() {
             const isPublishingThis = publishNow.isPending && publishNow.variables === post.id;
 
             return (
-              <li key={post.id} className="rounded-2xl border border-border bg-card p-4">
+              <li
+                key={post.id}
+                className={`rounded-2xl border bg-card p-4 ${
+                  selected.includes(post.id) ? "border-primary ring-1 ring-primary" : "border-border"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
+                  {post.status === "pending" && pendingIds.length > 1 ? (
+                    <input
+                      type="checkbox"
+                      aria-label="เลือกโพสต์นี้เพื่ออนุมัติหรือตีกลับพร้อมกัน"
+                      checked={selected.includes(post.id)}
+                      onChange={() => toggle(post.id)}
+                      className="mt-0.5 size-5 shrink-0 accent-[hsl(var(--primary))]"
+                    />
+                  ) : null}
                   <p className="min-w-0 flex-1 font-display text-sm font-semibold text-foreground">
                     {post.title?.trim() || post.body.slice(0, 60) || "ไม่มีหัวข้อ"}
                   </p>
