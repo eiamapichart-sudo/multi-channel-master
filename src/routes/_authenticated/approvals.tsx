@@ -52,6 +52,8 @@ function ApprovalsPage() {
   const { brandId, brands, isAll, brandName } = useBrand();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<string[]>([]);
+
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["all-channels"],
