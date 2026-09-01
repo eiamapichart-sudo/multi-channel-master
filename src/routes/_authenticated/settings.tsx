@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { sb } from "@/lib/supabase-loose";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
+import { useMyProfile, useSaveDisplayName } from "@/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,10 @@ function SettingsPage() {
   const [brandName, setBrandName] = useState("");
   const [accountName, setAccountName] = useState("");
   const [platform, setPlatform] = useState<Platform>("facebook");
+  const { data: profile } = useMyProfile();
+  const saveName = useSaveDisplayName();
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const nameValue = displayName ?? profile?.display_name ?? "";
 
   const targetBrand = brandId ?? brands[0]?.id ?? null;
 
@@ -116,6 +121,41 @@ function SettingsPage() {
   return (
     <div className="space-y-8 pb-6">
       <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">ตั้งค่า</h1>
+
+      <section className="space-y-3">
+        <h2 className="font-display text-sm font-semibold text-foreground">ชื่อของคุณ</h2>
+        <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">
+            ใช้แสดงว่าใครเป็นคนอนุมัติโพสต์ — ต้องตั้งชื่อก่อนจึงจะกดอนุมัติได้
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="display-name">ชื่อที่แสดง</Label>
+            <Input
+              id="display-name"
+              value={nameValue}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="เช่น เกด, พี่ต้น (ฝ่ายมาร์เก็ตติ้ง)"
+              className="rounded-xl"
+            />
+          </div>
+          <Button
+            className="h-11 w-full rounded-xl font-semibold"
+            disabled={saveName.isPending}
+            onClick={() =>
+              saveName.mutate(nameValue, {
+                onSuccess: () => toast.success("บันทึกชื่อแล้ว"),
+                onError: (error) =>
+                  toast.error(error instanceof Error ? error.message : "บันทึกไม่สำเร็จ"),
+              })
+            }
+          >
+            บันทึกชื่อ
+          </Button>
+          {!profile?.display_name ? (
+            <p className="text-xs text-destructive">ยังไม่ได้ตั้งชื่อ</p>
+          ) : null}
+        </div>
+      </section>
 
       <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-foreground">มุมมอง / แบรนด์</h2>
