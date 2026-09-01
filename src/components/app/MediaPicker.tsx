@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Video, X } from "lucide-react";
 import { toast } from "sonner";
-import { isVideoPath, removeMedia, signMedia, uploadMedia, type MediaItem } from "@/lib/media";
+import {
+  CHANNEL_VIDEO_LIMITS,
+  MEDIA_MAX_BYTES,
+  formatBytes,
+  isVideoPath,
+  removeMedia,
+  signMedia,
+  uploadMedia,
+  type MediaItem,
+  type UploadProgress,
+} from "@/lib/media";
 
 type Props = {
   brandId: string | null;
@@ -10,16 +20,13 @@ type Props = {
   disabled?: boolean;
 };
 
-/** เรียงชื่อไฟล์แบบธรรมชาติ: img2 มาก่อน img10 */
-const byNaturalName = (a: File, b: File) =>
-  a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
-
 export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<MediaItem[]>([]);
   const [busy, setBusy] = useState(false);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  /** ขนาดคลิปที่เพิ่งอัป ใช้เตือนว่าช่องทางไหนรับไม่ไหว */
+  const [videoBytes, setVideoBytes] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -47,7 +54,7 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
       toast.error("เลือกแบรนด์ก่อนอัปโหลด");
       return;
     }
-    const list = Array.from(files).sort(byNaturalName);
+    const list = Array.from(files);
     const kinds = new Set(list.map((f) => (f.type.startsWith("video/") ? "video" : "image")));
     if (kinds.size > 1) {
       toast.error("โพสต์เดียวกันผสมรูปกับวิดีโอไม่ได้ — เลือกรูปทั้งหมด หรือวิดีโอทั้งหมด");
@@ -65,32 +72,42 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
       return;
     }
     setBusy(true);
+    setProgress(null);
     try {
-      const added = await uploadMedia(brandId, list);
+      const added = await uploadMedia(brandId, list, setProgress);
       onChange([...paths, ...added]);
+      if (nextKind === "video") {
+        const biggest = list.reduce((max, f) => Math.max(max, f.size), 0);
+        setVideoBytes(biggest);
+      }
       toast.success(`อัปโหลด ${added.length} ไฟล์แล้ว`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "อัปโหลดไม่สำเร็จ");
+      toast.error(error instanceof Error ? error.message : "อัปโหลดไม่สำเร็จ", { duration: 8000 });
     } finally {
       setBusy(false);
+      setProgress(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   };
 
   const drop = async (path: string) => {
+    if (paths.length <= 1) setVideoBytes(null);
     onChange(paths.filter((p) => p !== path));
     void removeMedia(path);
   };
 
-  const reorder = (from: number, to: number) => {
-    if (from === to || to < 0 || to >= paths.length) return;
+  const move = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= paths.length) return;
     const next = [...paths];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved!);
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved!);
     onChange(next);
   };
 
-  const move = (index: number, delta: number) => reorder(index, index + delta);
+  // ช่องทางที่รับคลิปขนาดนี้ไม่ไหว — คำนวณจากไฟล์ที่เพิ่งอัปในรอบนี้
+  const overLimit =
+    videoBytes === null ? [] : CHANNEL_VIDEO_LIMITS.filter((c) => videoBytes > c.maxBytes);
 
   return (
     <div className="space-y-3">
@@ -107,41 +124,12 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
         {items.map((item, index) => (
           <div
             key={item.path}
-            draggable={!disabled && items.length > 1}
-            onDragStart={() => setDragIndex(index)}
-            onDragOver={(e) => {
-              if (dragIndex === null) return;
-              e.preventDefault();
-              setOverIndex(index);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (dragIndex !== null) reorder(dragIndex, index);
-              setDragIndex(null);
-              setOverIndex(null);
-            }}
-            onDragEnd={() => {
-              setDragIndex(null);
-              setOverIndex(null);
-            }}
-            className={`relative aspect-square overflow-hidden rounded-2xl border bg-secondary transition-all ${
-              dragIndex === index
-                ? "border-primary opacity-50"
-                : overIndex === index && dragIndex !== null
-                  ? "border-primary ring-2 ring-primary"
-                  : "border-border"
-            } ${!disabled && items.length > 1 ? "cursor-grab active:cursor-grabbing" : ""}`}
+            className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-secondary"
           >
             {item.kind === "video" ? (
-              <video src={item.url} className="pointer-events-none size-full object-cover" muted playsInline />
+              <video src={item.url} className="size-full object-cover" muted playsInline />
             ) : (
-              <img
-                src={item.url}
-                alt={`สื่อลำดับที่ ${index + 1}`}
-                className="pointer-events-none size-full object-cover"
-                loading="lazy"
-                draggable={false}
-              />
+              <img src={item.url} alt={`สื่อลำดับที่ ${index + 1}`} className="size-full object-cover" loading="lazy" />
             )}
             {items.length > 1 ? (
               <span className="absolute left-1.5 top-1.5 flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow">
@@ -199,7 +187,9 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
               <ImagePlus className="size-6 text-primary" />
             )}
             {busy
-              ? "กำลังอัปโหลด"
+              ? progress
+                ? `${progress.percent}%`
+                : "กำลังอัปโหลด"
               : currentKind === "video"
                 ? "เพิ่มวิดีโอ"
                 : currentKind === "image"
@@ -209,11 +199,36 @@ export function MediaPicker({ brandId, paths, onChange, disabled }: Props) {
         ) : null}
       </div>
 
+      {busy && progress ? (
+        <div className="space-y-1.5" aria-live="polite">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-200"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {progress.total > 1 ? `ไฟล์ที่ ${progress.index}/${progress.total} — ` : ""}
+            {progress.fileName} · {progress.percent}%
+          </p>
+        </div>
+      ) : null}
+
+      {!disabled && overLimit.length > 0 ? (
+        <p className="rounded-lg bg-secondary px-3 py-2 text-xs leading-5 text-muted-foreground">
+          คลิปนี้ {formatBytes(videoBytes ?? 0)} — ใหญ่เกินเพดานของ{" "}
+          <span className="font-medium text-foreground">
+            {overLimit.map((c) => c.label).join(" และ ")}
+          </span>{" "}
+          ({overLimit.map((c) => `${c.label} ไม่เกิน ${formatBytes(c.maxBytes)}`).join(" · ")})
+          ถ้าเลือกช่องทางนั้นด้วย โพสต์จะล้มเหลว ให้ย่อไฟล์ก่อนหรือตัดช่องทางนั้นออก
+        </p>
+      ) : null}
+
       {!disabled ? (
         <p className="text-xs text-muted-foreground">
-          ตัวเลขบนรูปคือลำดับที่จะโพสต์ในอัลบัม — ลากรูปสลับตำแหน่งได้ (บนมือถือกด ← →) •
-          ไฟล์ใหม่จะเรียงตามชื่อ/เลขน้อยไปมากให้อัตโนมัติ • หนึ่งโพสต์เลือกได้เฉพาะรูปทั้งหมด
-          หรือวิดีโอทั้งหมด • ไฟล์ละไม่เกิน 50MB
+          ตัวเลขบนรูปคือลำดับที่จะโพสต์ในอัลบัม (กด ← → เพื่อสลับลำดับ) • หนึ่งโพสต์เลือกได้เฉพาะรูปทั้งหมด
+          หรือวิดีโอทั้งหมด • ไฟล์ละไม่เกิน {formatBytes(MEDIA_MAX_BYTES)}
         </p>
       ) : null}
     </div>
