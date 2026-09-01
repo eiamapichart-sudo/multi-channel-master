@@ -7,6 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
+import { useMyProfile, useTeamNames } from "@/hooks/useProfile";
+import { MediaStrip } from "@/components/app/MediaStrip";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { formatThaiDateTime, platformLabel, STATUS_META, type PostStatus } from "@/lib/platforms";
 
@@ -44,14 +47,20 @@ type ApprovalRow = {
   brand_id: string;
   title: string | null;
   body: string;
+  media_url: string | null;
+  media_urls: string[] | null;
   scheduled_at: string | null;
   status: PostStatus;
+  approved_by: string | null;
+  approved_at: string | null;
   post_targets: TargetRow[];
 };
 
 function ApprovalsPage() {
   const { brandId, brands, isAll, brandName } = useBrand();
   const { user } = useAuth();
+  const { data: profile } = useMyProfile();
+  const myName = profile?.display_name?.trim() ?? "";
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string[]>([]);
 
@@ -73,7 +82,7 @@ function ApprovalsPage() {
       let query = supabase
         .from("posts")
         .select(
-          "id, brand_id, title, body, scheduled_at, status, post_targets(id, platform, channel_account_id, status, error_message, external_url)",
+          "id, brand_id, title, body, media_url, media_urls, scheduled_at, status, approved_by, approved_at, post_targets(id, platform, channel_account_id, status, error_message, external_url)",
         )
         .in("status", ["pending", "approved", "publishing", "failed"])
         .order("scheduled_at", { ascending: true, nullsFirst: false });
@@ -83,6 +92,8 @@ function ApprovalsPage() {
       return data as unknown as ApprovalRow[];
     },
   });
+
+  const { data: teamNames = {} } = useTeamNames(posts.map((p) => p.approved_by));
 
   const targetLabel = (target: TargetRow) => {
     const account = accounts.find((a) => a.id === target.channel_account_id);
@@ -153,6 +164,7 @@ function ApprovalsPage() {
   });
 
   const busy = decide.isPending || publishNow.isPending || bulkDecide.isPending;
+  const needsName = !myName;
 
   const pendingPosts = posts.filter((p) => p.status === "pending");
   const pendingIds = pendingPosts.map((p) => p.id);
@@ -165,6 +177,21 @@ function ApprovalsPage() {
   return (
     <div className="space-y-4 pb-6">
       <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">คิวอนุมัติ</h1>
+
+      {needsName ? (
+        <div className="rounded-2xl border border-accent/40 bg-accent/10 p-4">
+          <p className="text-sm font-semibold text-foreground">ตั้งชื่อของคุณก่อนอนุมัติ</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            ระบบจะบันทึกว่าใครเป็นคนอนุมัติแต่ละโพสต์ — ไปใส่ชื่อที่หน้าตั้งค่าก่อนนะ
+          </p>
+          <Link
+            to="/settings"
+            className="mt-3 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+          >
+            ไปตั้งชื่อ
+          </Link>
+        </div>
+      ) : null}
 
       {pendingIds.length > 1 ? (
         <div className="sticky top-2 z-10 space-y-2 rounded-2xl border border-border bg-card/95 p-3 backdrop-blur">
@@ -183,7 +210,7 @@ function ApprovalsPage() {
           <div className="flex gap-2">
             <Button
               className="h-11 flex-1 rounded-xl font-semibold"
-              disabled={busy || selectedPending.length === 0}
+              disabled={busy || needsName || selectedPending.length === 0}
               onClick={() => bulkDecide.mutate({ ids: selectedPending, next: "approved" })}
             >
               อนุมัติที่เลือก ({selectedPending.length})
@@ -249,6 +276,8 @@ function ApprovalsPage() {
                   {post.body}
                 </p>
 
+                <MediaStrip paths={post.media_urls?.length ? post.media_urls : post.media_url ? [post.media_url] : []} />
+
                 <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
                   <div className="flex gap-2">
                     <dt className="font-semibold text-foreground">ปลายทาง</dt>
@@ -258,6 +287,15 @@ function ApprovalsPage() {
                     <dt className="font-semibold text-foreground">เวลา</dt>
                     <dd>{formatThaiDateTime(post.scheduled_at)}</dd>
                   </div>
+                  {post.approved_by ? (
+                    <div className="flex gap-2">
+                      <dt className="font-semibold text-foreground">อนุมัติโดย</dt>
+                      <dd>
+                        {teamNames[post.approved_by] ?? "ผู้ใช้ในทีม"}
+                        {post.approved_at ? ` · ${formatThaiDateTime(post.approved_at)}` : ""}
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
 
                 {publishedTargets.length > 0 ? (
@@ -295,7 +333,7 @@ function ApprovalsPage() {
                       <Button
                         className="h-11 flex-1 rounded-xl font-semibold"
                         onClick={() => decide.mutate({ id: post.id, next: "approved" })}
-                        disabled={busy}
+                        disabled={busy || needsName}
                       >
                         อนุมัติ
                       </Button>
