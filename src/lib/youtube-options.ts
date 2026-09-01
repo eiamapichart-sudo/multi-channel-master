@@ -35,7 +35,7 @@ export const YOUTUBE_SHORTS_MAX_SECONDS = 180;
 export const YOUTUBE_COVER_MAX_BYTES = 2 * 1024 * 1024;
 
 /** เพดานขนาดไฟล์ที่เรากล้าโหลดเข้าหน่วยความจำเซิร์ฟเวอร์ก่อนส่งต่อให้ YouTube */
-export const YOUTUBE_MAX_VIDEO_BYTES = 256 * 1024 * 1024;
+export const YOUTUBE_MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
 export const YOUTUBE_DEFAULT_OPTIONS: YouTubePostOptionsValue = {
   title: "",

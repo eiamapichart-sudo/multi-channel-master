@@ -21,8 +21,18 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 180_000;
 const withTimeout = (ms = REQUEST_TIMEOUT_MS) => AbortSignal.timeout(ms);
 
-/** เพดานขนาดไฟล์ที่เรากล้าโหลดเข้าหน่วยความจำเซิร์ฟเวอร์ */
-export const TIKTOK_MAX_VIDEO_BYTES = 60 * 1024 * 1024;
+/** เพดานขนาดคลิปที่ระบบนี้รับ — TikTok เองรับถึง 4GB เราจำกัดให้เท่ากับเพดานของคลังไฟล์ */
+export const TIKTOK_MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+
+/**
+ * ขนาดก้อนที่ส่งต่อรอบ
+ *
+ * TikTok บังคับให้แต่ละก้อนอยู่ระหว่าง 5MB ถึง 64MB (ก้อนสุดท้ายเกินได้ถึง 128MB)
+ * เราเลือก 32MB เพราะแอปรันบน Cloudflare Workers ที่มีแรมจำกัด
+ * ยิ่งก้อนใหญ่ยิ่งกินแรม ยิ่งก้อนเล็กยิ่งเปลืองจำนวนคำขอ — 32MB คือจุดที่พอดีทั้งสองด้าน
+ * คลิป 500MB จะแบ่งเป็น 15 ก้อน ใช้คำขอราว 33 ครั้ง
+ */
+const CHUNK_BYTES = 32 * 1024 * 1024;
 
 const CLIENT_KEY = () => process.env["TIKTOK_CLIENT_KEY"] ?? "";
 const CLIENT_SECRET = () => process.env["TIKTOK_CLIENT_SECRET"] ?? "";
@@ -227,29 +237,84 @@ export function tiktokPermalink(username: string, postId: string) {
   return username ? `https://www.tiktok.com/@${username}` : "https://www.tiktok.com";
 }
 
-/** ดาวน์โหลดคลิปจากคลังไฟล์เข้าหน่วยความจำเพื่อส่งต่อให้ TikTok */
-async function fetchVideo(url: string): Promise<Uint8Array> {
-  const res = await fetch(url, { signal: withTimeout(UPLOAD_TIMEOUT_MS) });
-  if (!res.ok) throw new TikTokError(`อ่านไฟล์วิดีโอไม่สำเร็จ (HTTP ${res.status})`, res.status);
-  const buf = new Uint8Array(await res.arrayBuffer());
-  if (buf.byteLength === 0) throw new TikTokError("ไฟล์วิดีโอว่างเปล่า", 400);
-  if (buf.byteLength > TIKTOK_MAX_VIDEO_BYTES) {
-    throw new TikTokError(
-      `คลิปใหญ่เกินไป (${Math.round(buf.byteLength / 1024 / 1024)}MB) — TikTok ผ่านระบบนี้รับได้ไม่เกิน ${TIKTOK_MAX_VIDEO_BYTES / 1024 / 1024}MB`,
-      413,
-    );
+/**
+ * ถามขนาดและชนิดไฟล์จากคลังไฟล์ โดยไม่ดาวน์โหลดตัวไฟล์
+ *
+ * ลอง HEAD ก่อน ถ้าคลังไฟล์ไม่ตอบ HEAD ก็ถอยไปขอ byte แรกด้วย Range
+ * แล้วอ่านขนาดจริงจากส่วนหลังของหัว content-range แทน
+ */
+async function probeVideo(url: string): Promise<{ size: number; mime: string }> {
+  const readHeaders = (res: Response) => {
+    const mime = res.headers.get("content-type") || "video/mp4";
+    const cr = res.headers.get("content-range");
+    const totalFromRange = cr ? Number(cr.split("/")[1] ?? "0") : 0;
+    const len = Number(res.headers.get("content-length") ?? "0");
+    const size = totalFromRange > 0 ? totalFromRange : len;
+    return { size, mime };
+  };
+
+  const head = await fetch(url, { method: "HEAD", signal: withTimeout() }).catch(() => null);
+  if (head?.ok) {
+    const info = readHeaders(head);
+    if (info.size > 0) return info;
   }
-  return buf;
+
+  const probe = await fetch(url, { headers: { range: "bytes=0-0" }, signal: withTimeout() });
+  if (!probe.ok && probe.status !== 206) {
+    throw new TikTokError(`อ่านไฟล์วิดีโอไม่สำเร็จ (HTTP ${probe.status})`, probe.status);
+  }
+  await probe.arrayBuffer();
+  const info = readHeaders(probe);
+  if (info.size <= 0) throw new TikTokError("อ่านขนาดไฟล์วิดีโอไม่ได้", 500);
+  return info;
 }
 
-async function uploadChunk(uploadUrl: string, bytes: Uint8Array, mime: string) {
-  const size = bytes.byteLength;
+/**
+ * อ่านเฉพาะช่วงไบต์ที่ต้องการจากคลังไฟล์
+ *
+ * หัวใจของการรองรับไฟล์ใหญ่ — เราไม่เคยถือทั้งคลิปไว้ในแรม ถือทีละก้อนเท่านั้น
+ * ถ้าคลังไฟล์ไม่รองรับ Range มันจะส่งไฟล์ทั้งก้อนกลับมา ซึ่งจะจับได้จากจำนวนไบต์ที่ไม่ตรง
+ */
+async function readRange(url: string, start: number, endInclusive: number): Promise<Uint8Array> {
+  const want = endInclusive - start + 1;
+  const res = await fetch(url, {
+    headers: { range: `bytes=${start}-${endInclusive}` },
+    signal: withTimeout(UPLOAD_TIMEOUT_MS),
+  });
+  if (!res.ok && res.status !== 206) {
+    throw new TikTokError(`อ่านไฟล์วิดีโอไม่สำเร็จ (HTTP ${res.status})`, res.status);
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.byteLength !== want) {
+    throw new TikTokError(
+      `คลังไฟล์ส่งข้อมูลไม่ตรงช่วงที่ขอ (ขอ ${want} ไบต์ ได้ ${bytes.byteLength}) — คลังไฟล์อาจไม่รองรับการอ่านทีละช่วง`,
+      500,
+    );
+  }
+  return bytes;
+}
+
+/** แบ่งก้อนตามกติกาของ TikTok — ก้อนสุดท้ายกินเศษที่เหลือทั้งหมด */
+function planChunks(size: number): { chunkSize: number; count: number } {
+  const chunk = Math.min(CHUNK_BYTES, size);
+  const count = Math.max(1, Math.floor(size / chunk));
+  return count === 1 ? { chunkSize: size, count: 1 } : { chunkSize: chunk, count };
+}
+
+async function uploadChunk(
+  uploadUrl: string,
+  bytes: Uint8Array,
+  mime: string,
+  start: number,
+  endInclusive: number,
+  total: number,
+) {
   const res = await fetch(uploadUrl, {
     method: "PUT",
     headers: {
       "content-type": mime,
-      "content-length": String(size),
-      "content-range": `bytes 0-${size - 1}/${size}`,
+      "content-length": String(bytes.byteLength),
+      "content-range": `bytes ${start}-${endInclusive}/${total}`,
     },
     body: bytes as unknown as BodyInit,
     signal: withTimeout(UPLOAD_TIMEOUT_MS),
@@ -304,14 +369,21 @@ export async function publishTikTokVideo(
   options: TikTokPostOptions,
   onPublishId?: (publishId: string) => Promise<void>,
 ): Promise<{ publishId: string }> {
-  const bytes = await fetchVideo(videoUrl);
-  const size = bytes.byteLength;
+  const probe = await probeVideo(videoUrl);
+  const size = probe.size;
+  if (size > TIKTOK_MAX_VIDEO_BYTES) {
+    throw new TikTokError(
+      `คลิปใหญ่เกินไป (${Math.round(size / 1024 / 1024)}MB) — TikTok ผ่านระบบนี้รับได้ไม่เกิน ${TIKTOK_MAX_VIDEO_BYTES / 1024 / 1024}MB`,
+      413,
+    );
+  }
+  const { chunkSize, count } = planChunks(size);
 
   const sourceInfo = {
     source: "FILE_UPLOAD",
     video_size: size,
-    chunk_size: size,
-    total_chunk_count: 1,
+    chunk_size: chunkSize,
+    total_chunk_count: count,
   };
 
   const path = options.directPost ? "/post/publish/video/init/" : "/post/publish/inbox/video/init/";
@@ -327,7 +399,15 @@ export async function publishTikTokVideo(
   if (!publishId || !uploadUrl) throw new TikTokError("TikTok ไม่ได้ให้ปลายทางอัปโหลด", 500);
 
   await onPublishId?.(publishId);
-  await uploadChunk(uploadUrl, bytes, options.mime ?? "video/mp4");
+
+  // ส่งทีละก้อน อ่านจากคลังไฟล์เฉพาะช่วงที่กำลังจะส่ง แรมจึงถูกใช้แค่ก้อนละครั้ง
+  const mime = options.mime ?? probe.mime;
+  for (let i = 0; i < count; i += 1) {
+    const start = i * chunkSize;
+    const endInclusive = i === count - 1 ? size - 1 : start + chunkSize - 1;
+    const bytes = await readRange(videoUrl, start, endInclusive);
+    await uploadChunk(uploadUrl, bytes, mime, start, endInclusive, size);
+  }
 
   return { publishId };
 }

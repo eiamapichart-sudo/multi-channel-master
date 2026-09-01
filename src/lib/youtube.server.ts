@@ -195,19 +195,41 @@ export async function getChannelInfo(token: string): Promise<YouTubeChannel> {
 
 /* ------------------------------------------------------------- อัปโหลดคลิป */
 
-/** ดาวน์โหลดคลิปจากคลังไฟล์เข้าหน่วยความจำเพื่อส่งต่อให้ YouTube */
-async function fetchVideo(url: string): Promise<Uint8Array> {
+type OpenVideo = {
+  /** สายข้อมูลของไฟล์ ส่งต่อให้ YouTube ตรงๆ ไม่ต้องพักไว้ในหน่วยความจำ */
+  stream: ReadableStream<Uint8Array>;
+  size: number;
+  mime: string;
+};
+
+/**
+ * เปิดสายอ่านคลิปจากคลังไฟล์
+ *
+ * ไม่โหลดทั้งไฟล์เข้าหน่วยความจำ เพราะแอปรันบน Cloudflare Workers ซึ่งมีแรมจำกัด
+ * คลิปหลักร้อยเมกฯ จะทำให้ worker ตายก่อนได้อัปเสร็จ
+ * วิธีนี้ไบต์ไหลจากคลังไฟล์ผ่านเราไป YouTube เลย ใช้แรมแค่บัฟเฟอร์เล็กๆ
+ */
+async function openVideo(url: string): Promise<OpenVideo> {
   const res = await fetch(url, { signal: withTimeout(UPLOAD_TIMEOUT_MS) });
   if (!res.ok) throw new YouTubeError(`อ่านไฟล์วิดีโอไม่สำเร็จ (HTTP ${res.status})`, res.status);
-  const buf = new Uint8Array(await res.arrayBuffer());
-  if (buf.byteLength === 0) throw new YouTubeError("ไฟล์วิดีโอว่างเปล่า", 400);
-  if (buf.byteLength > YOUTUBE_MAX_VIDEO_BYTES) {
+
+  const size = Number(res.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(size) || size <= 0) {
+    throw new YouTubeError("อ่านขนาดไฟล์วิดีโอไม่ได้ — คลังไฟล์ไม่ได้บอกขนาดมา", 500);
+  }
+  if (size > YOUTUBE_MAX_VIDEO_BYTES) {
     throw new YouTubeError(
-      `คลิปใหญ่เกินไป (${Math.round(buf.byteLength / 1024 / 1024)}MB) — ระบบนี้รับได้ไม่เกิน ${YOUTUBE_MAX_VIDEO_BYTES / 1024 / 1024}MB`,
+      `คลิปใหญ่เกินไป (${Math.round(size / 1024 / 1024)}MB) — ระบบนี้รับได้ไม่เกิน ${YOUTUBE_MAX_VIDEO_BYTES / 1024 / 1024}MB`,
       413,
     );
   }
-  return buf;
+  if (!res.body) throw new YouTubeError("อ่านไฟล์วิดีโอไม่ได้ — ไม่มีเนื้อไฟล์ส่งกลับมา", 500);
+
+  return {
+    stream: res.body,
+    size,
+    mime: res.headers.get("content-type") || "video/mp4",
+  };
 }
 
 export type YouTubeUploadOptions = {
@@ -229,9 +251,9 @@ export async function uploadYouTubeVideo(
   options: YouTubeUploadOptions,
   onUploadUrl?: (uploadUrl: string) => Promise<void>,
 ): Promise<{ videoId: string }> {
-  const bytes = await fetchVideo(videoUrl);
-  const size = bytes.byteLength;
-  const mime = options.mime ?? "video/mp4";
+  const video = await openVideo(videoUrl);
+  const size = video.size;
+  const mime = options.mime ?? video.mime;
 
   const choices = options.choices;
   const description =
@@ -273,12 +295,14 @@ export async function uploadYouTubeVideo(
 
   await onUploadUrl?.(uploadUrl);
 
+  // duplex: "half" จำเป็นเมื่อ body เป็น stream — ยังไม่มีในนิยาม RequestInit มาตรฐาน
   const put = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "content-type": mime, "content-length": String(size) },
-    body: bytes as unknown as BodyInit,
+    body: video.stream,
+    duplex: "half",
     signal: withTimeout(UPLOAD_TIMEOUT_MS),
-  });
+  } as RequestInit & { duplex: "half" });
 
   const done = await parseOrThrow(put, "อัปคลิปขึ้น YouTube");
   const videoId = String(done?.id ?? "");
